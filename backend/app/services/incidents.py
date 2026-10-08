@@ -50,10 +50,13 @@ class UnknownCategory(Exception):
     pass
 
 
-def change_status(incident: Incident, new_status: IncidentStatus) -> IncidentStatus:
-    """Move the incident to new_status if the lifecycle allows it. Returns the old status."""
+def change_status(
+    incident: Incident, new_status: IncidentStatus, *, by_assignment: bool = False
+) -> IncidentStatus:
+    """Move the incident to new_status if the lifecycle allows it. Returns the old status.
+    by_assignment=True is used only by the assign service (app/services/resources.py)."""
     old_status = incident.status
-    if new_status in NOT_SETTABLE_BY_STATUS_ENDPOINT:
+    if new_status in NOT_SETTABLE_BY_STATUS_ENDPOINT and not by_assignment:
         raise InvalidTransition(f"{new_status} is set by assigning a resource, not directly")
     if new_status not in ALLOWED_TRANSITIONS[old_status]:
         raise InvalidTransition(f"Cannot move an incident from {old_status} to {new_status}")

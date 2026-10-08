@@ -7,7 +7,6 @@ from geoalchemy2 import Geometry
 from sqlalchemy import (
     Boolean,
     DateTime,
-    Enum,
     Float,
     ForeignKey,
     Index,
@@ -17,7 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base
+from app.models.base import Base, text_enum
 
 
 class Severity(enum.StrEnum):
@@ -34,16 +33,6 @@ class IncidentStatus(enum.StrEnum):
     EN_ROUTE = "EN_ROUTE"
     RESOLVED = "RESOLVED"
     CLOSED = "CLOSED"
-
-
-def _as_text(enum_class: type[enum.Enum], length: int) -> Enum:
-    # Stored as plain text; the CHECK constraints in migration 0003 restrict the values.
-    return Enum(
-        enum_class,
-        native_enum=False,
-        length=length,
-        values_callable=lambda members: [m.value for m in members],
-    )
 
 
 class IncidentCategory(Base):
@@ -68,9 +57,9 @@ class Incident(Base):
     category_id: Mapped[int | None] = mapped_column(ForeignKey("incident_categories.id"))
     description: Mapped[str] = mapped_column(Text)
     language: Mapped[str] = mapped_column(String(10), default="en")
-    severity: Mapped[Severity] = mapped_column(_as_text(Severity, 10), default=Severity.MEDIUM)
+    severity: Mapped[Severity] = mapped_column(text_enum(Severity, 10), default=Severity.MEDIUM)
     status: Mapped[IncidentStatus] = mapped_column(
-        _as_text(IncidentStatus, 15), default=IncidentStatus.NEW, index=True
+        text_enum(IncidentStatus, 15), default=IncidentStatus.NEW, index=True
     )
     is_sos: Mapped[bool] = mapped_column(Boolean, default=False)
     # Classifier confidence in [0, 1]; empty until the classifier exists (Phase 6).

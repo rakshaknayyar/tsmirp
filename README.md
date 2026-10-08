@@ -5,7 +5,23 @@ B.Tech final-year prototype for Smart India Hackathon problem statement **SIH250
 > **Decision support only.** TSMIRP is not a replacement for police or emergency services.
 > In a real emergency, call **112**.
 
-## Current status: Phase 2 (incidents, status lifecycle, live dashboard)
+## Current status: Phase 3 (response resources, nearest-resource ranking)
+- Police stations, hospitals and fire stations for the demo area (Jaipur) imported from
+  OpenStreetMap: `python -m app.cli import-osm --area jaipur`
+- Nearest search with PostGIS KNN (`<->`) on geography; recommendations filtered by the
+  category's department and ranked available -> matching capability -> nearer
+- Tests cross-check PostGIS against a brute-force Haversine calculation
+- `POST /incidents/{id}/assign` is a **simulated** dispatch: the decision is recorded, the
+  resource is marked BUSY (simulated), nothing is sent anywhere
+- All distances are **straight-line** approximations; real road distance is longer
+
+### Known data limitations (observed in the Jaipur import, 2026-10-08)
+- The import found 403 "hospitals", 22 police stations and 1 fire station. OpenStreetMap
+  coverage is uneven: fire stations are clearly under-mapped.
+- Some features tagged `amenity=hospital` are clinics or diagnostic centres, and some
+  stations appear twice (e.g. a misspelt duplicate). The data is used as-is, not cleaned.
+
+## Phase 2 (incidents, status lifecycle, live dashboard)
 - Tourists report incidents (9 categories, each with a suggested department); a location can
   only be attached when location consent is on
 - Status lifecycle NEW -> ACKNOWLEDGED -> ASSIGNED -> EN_ROUTE -> RESOLVED -> CLOSED, enforced
@@ -44,6 +60,9 @@ B.Tech final-year prototype for Smart India Hackathon problem statement **SIH250
 | GET | /incidents, /incidents/{id} | tourist (own only), staff (all) |
 | PATCH | /incidents/{id}/status | operator, supervisor, administrator |
 | WS | /ws/dashboard | operator, supervisor, administrator (token sent in first message) |
+| GET | /nearby-resources?lat=&lon=&type=&k= | any logged-in user |
+| GET | /incidents/{id}/recommended-resources | operator, supervisor, administrator |
+| POST | /incidents/{id}/assign | operator, supervisor, administrator (simulated dispatch) |
 
 ## Run locally on Windows (no Docker)
 
@@ -59,6 +78,7 @@ Requirements: PostgreSQL 16 with PostGIS, Python 3.11+, Node 22. Redis is option
    pip install -e ".[dev]"
    alembic upgrade head
    python -m app.cli create-admin --email you@example.org --name "Your Name"
+   python -m app.cli import-osm --area jaipur
    uvicorn app.main:app --reload
    ```
    `create-admin` asks for the password without showing it. Run it once.

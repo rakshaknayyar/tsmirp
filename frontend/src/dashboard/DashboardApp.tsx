@@ -1,16 +1,17 @@
 // Authority dashboard (bare Phase 2 version): live incident list + status buttons.
 // New incidents and status changes arrive over the WebSocket without refreshing the page.
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 
 import { apiGet, apiRequest, dashboardSocketUrl } from "../shared/api";
 import LoginForm from "../shared/LoginForm";
 import SimulationNotice from "../shared/SimulationNotice";
 import { STAFF_ROLES } from "../shared/types";
 import type { Incident, IncidentStatus, Session } from "../shared/types";
+import ResourcePicker from "./ResourcePicker";
 
 // Buttons offered for each status. Mirrors the backend lifecycle, except ASSIGNED, which is
-// set by assigning a resource (Phase 3).
+// set by assigning a resource (the "Recommend resources" button).
 const NEXT_STATUSES: Record<IncidentStatus, IncidentStatus[]> = {
   NEW: ["ACKNOWLEDGED"],
   ACKNOWLEDGED: ["RESOLVED"],
@@ -51,6 +52,7 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [liveMode, setLiveMode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pickerFor, setPickerFor] = useState<number | null>(null); // incident id
 
   useEffect(() => {
     apiGet<Incident[]>("/incidents", session.token)
@@ -127,22 +129,42 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
         </thead>
         <tbody>
           {incidents.map((incident) => (
-            <tr key={incident.id} style={{ borderTop: "1px solid #ddd" }}>
-              <td>{incident.id}</td>
-              <td>{new Date(incident.created_at).toLocaleString()}</td>
-              <td>{incident.category?.name ?? "Uncategorised"}</td>
-              <td>{incident.category?.department ?? "-"}</td>
-              <td>{incident.severity}</td>
-              <td>{incident.status}</td>
-              <td>{incident.description}</td>
-              <td>
-                {NEXT_STATUSES[incident.status].map((next) => (
-                  <button key={next} onClick={() => changeStatus(incident, next)}>
-                    {next}
-                  </button>
-                ))}
-              </td>
-            </tr>
+            <Fragment key={incident.id}>
+              <tr style={{ borderTop: "1px solid #ddd" }}>
+                <td>{incident.id}</td>
+                <td>{new Date(incident.created_at).toLocaleString()}</td>
+                <td>{incident.category?.name ?? "Uncategorised"}</td>
+                <td>{incident.category?.department ?? "-"}</td>
+                <td>{incident.severity}</td>
+                <td>{incident.status}</td>
+                <td>{incident.description}</td>
+                <td>
+                  {NEXT_STATUSES[incident.status].map((next) => (
+                    <button key={next} onClick={() => changeStatus(incident, next)}>
+                      {next}
+                    </button>
+                  ))}
+                  {incident.status === "ACKNOWLEDGED" && incident.location && (
+                    <button onClick={() => setPickerFor(incident.id)}>Recommend resources</button>
+                  )}
+                </td>
+              </tr>
+              {pickerFor === incident.id && (
+                <tr>
+                  <td colSpan={8}>
+                    <ResourcePicker
+                      incident={incident}
+                      token={session.token}
+                      onAssigned={(updated) => {
+                        setIncidents((list) => upsert(list, updated));
+                        setPickerFor(null);
+                      }}
+                      onClose={() => setPickerFor(null)}
+                    />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>

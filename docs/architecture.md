@@ -23,5 +23,15 @@ falls back), events are delivered inside the single API process.
 - Category -> suggested department lookup: theft, harassment, lost person, suspicious
   activity -> Police; medical emergency, accident -> Medical; fire -> Fire; natural disaster
   -> Disaster Management; other -> Tourist Helpdesk.
+- Department -> resource types: Police -> police station; Medical -> hospital; Fire -> fire
+  station; Disaster Management -> fire station or police station; Tourist Helpdesk -> police
+  station.
+- Recommendation ranking: only resources within 25 km straight-line
+  (`RECOMMEND_MAX_DISTANCE_M`); OFFLINE excluded; AVAILABLE before BUSY; matching capability first
+  (medical emergency / accident prefer hospitals tagged `emergency=yes`); then nearer.
+  The nearest 20 suitable resources (PostGIS KNN) are re-ranked.
+- Resource availability is simulated: assigning marks a resource BUSY, resolving or closing
+  the incident marks it AVAILABLE again.
+- Demo area bounding box (Jaipur): south 26.80, west 75.70, north 27.00, east 75.90.
 - Stored locations expire after 30 days (`LOCATION_RETENTION_DAYS`).
 - Staff see an incident's location only while the reporter's consent is on, or for an SOS.

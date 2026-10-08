@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     # Stored locations expire after this many days (initial assumption, configurable).
     location_retention_days: int = 30
 
+    # Resources further away than this are never recommended (straight-line metres;
+    # initial assumption, configurable). Without it, an AVAILABLE unit hundreds of km away
+    # would outrank a BUSY one next door.
+    recommend_max_distance_m: float = 25_000
+
     # No default on purpose: the API refuses to start without a real secret.
     jwt_secret: str = Field(min_length=32)
     jwt_algorithm: str = "HS256"

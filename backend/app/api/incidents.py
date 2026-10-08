@@ -25,6 +25,7 @@ from app.services.incidents import (
     create_incident,
     to_incident_out,
 )
+from app.services.resources import release_assignments
 
 router = APIRouter(tags=["incidents"])
 
@@ -116,6 +117,8 @@ def update_status(
         old_status = change_status(incident, body.status)
     except InvalidTransition as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
+    if body.status in (IncidentStatus.RESOLVED, IncidentStatus.CLOSED):
+        release_assignments(db, incident)  # simulated resources become AVAILABLE again
     record_event(
         db,
         "incident.status_changed",

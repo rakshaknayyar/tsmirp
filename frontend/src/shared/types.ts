@@ -45,6 +45,20 @@ export type Incident = {
   location: { lat: number; lon: number; accuracy_m: number | null; recorded_at: string } | null;
 };
 
+export type RecommendedResource = {
+  id: number;
+  name: string;
+  resource_type: "police_station" | "hospital" | "fire_station";
+  source: string;
+  capabilities: string[];
+  availability_sim: "AVAILABLE" | "BUSY" | "OFFLINE"; // simulated
+  lat: number;
+  lon: number;
+  distance_m: number;
+  distance_kind: "straight_line";
+  capability_match: boolean;
+};
+
 export type Session = { token: string; user: User };
 
 export const STAFF_ROLES: Role[] = ["operator", "supervisor", "administrator"];
