@@ -45,6 +45,12 @@ falls back), events are delivered inside the single API process.
   10 min old is reused when the SOS itself has none; an open SOS is returned instead of a
   duplicate; "I'm safe" may resolve the SOS from any open status (special path outside the
   operator lifecycle).
+- Text classification: TF-IDF + logistic regression, sigmoid-calibrated, trained on synthetic
+  English text only (Phase 8 adds translation). Review threshold 0.5 (initial assumption).
+  If no model is trained, new reports stay uncategorised and are flagged for review.
+- Severity defaults per category (assumption): suspicious activity / other LOW; theft,
+  accident, lost person, unknown MEDIUM; harassment, medical emergency, natural disaster HIGH;
+  fire CRITICAL. The brief's keyword rules raise it from there (see app/services/severity.py).
 - Risk zones in the demo are synthetic circles (ml/data/synthetic_risk_zones_jaipur.json).
   A zone's level is its `base_level`; the risk model (Phase 7) will add predicted levels.
 - Staff see an incident's location only while the reporter's consent is on, or for an SOS.

@@ -1,4 +1,5 @@
-// Authority dashboard: map, live geofence alerts, live incident list + status buttons.
+// Authority dashboard: map, live geofence alerts, live incident list, status buttons, and
+// operator overrides of the automatic category / severity (every override is audited).
 // New incidents, status changes and geofence alerts arrive over the WebSocket without
 // refreshing the page.
 
@@ -8,8 +9,8 @@ import { apiGet, apiRequest } from "../shared/api";
 import { openLiveSocket } from "../shared/liveSocket";
 import LoginForm from "../shared/LoginForm";
 import SimulationNotice from "../shared/SimulationNotice";
-import { STAFF_ROLES } from "../shared/types";
-import type { Incident, IncidentStatus, Session } from "../shared/types";
+import { SEVERITIES, STAFF_ROLES } from "../shared/types";
+import type { Category, Incident, IncidentStatus, Session } from "../shared/types";
 import DashboardMap from "./DashboardMap";
 import ResourcePicker from "./ResourcePicker";
 
@@ -60,10 +61,14 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
   const [error, setError] = useState<string | null>(null);
   const [pickerFor, setPickerFor] = useState<number | null>(null); // incident id
   const [alerts, setAlerts] = useState<GeofenceAlert[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
 
   useEffect(() => {
     apiGet<Incident[]>("/incidents", session.token)
       .then(setIncidents)
+      .catch((err: Error) => setError(err.message));
+    apiGet<Category[]>("/incident-categories", session.token)
+      .then(setCategories)
       .catch((err: Error) => setError(err.message));
   }, [session.token]);
 
@@ -91,6 +96,23 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
         const updated = await apiRequest<Incident>("PATCH", `/incidents/${incident.id}/status`, {
           token: session.token,
           body: { status },
+        });
+        setIncidents((list) => upsert(list, updated));
+      } catch (err) {
+        setError((err as Error).message);
+      }
+    },
+    [session.token],
+  );
+
+  // Operator override of category and/or severity (PATCH /incidents/{id}).
+  const override = useCallback(
+    async (incident: Incident, change: { category_code?: string; severity?: string }) => {
+      setError(null);
+      try {
+        const updated = await apiRequest<Incident>("PATCH", `/incidents/${incident.id}`, {
+          token: session.token,
+          body: change,
         });
         setIncidents((list) => upsert(list, updated));
       } catch (err) {
@@ -150,10 +172,44 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
                 <tr style={{ borderTop: "1px solid #ddd" }}>
                   <td>{incident.id}</td>
                   <td>{new Date(incident.created_at).toLocaleString()}</td>
-                  <td>{incident.category?.name ?? "Uncategorised"}</td>
+                  <td>
+                    <select
+                      aria-label={`Category of incident ${incident.id}`}
+                      value={incident.category?.code ?? ""}
+                      onChange={(e) => override(incident, { category_code: e.target.value })}
+                    >
+                      {!incident.category && <option value="">Uncategorised</option>}
+                      {categories.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    {incident.needs_review && (
+                      <strong style={{ color: "#ef6c00" }} title="Check the category">
+                        {" "}
+                        needs review
+                      </strong>
+                    )}
+                    {incident.confidence !== null && (
+                      <div style={{ fontSize: 12 }}>
+                        auto, confidence {Math.round(incident.confidence * 100)}%
+                      </div>
+                    )}
+                  </td>
                   <td>{incident.category?.department ?? "-"}</td>
                   <td>
-                    {incident.severity}
+                    <select
+                      aria-label={`Severity of incident ${incident.id}`}
+                      value={incident.severity}
+                      onChange={(e) => override(incident, { severity: e.target.value })}
+                    >
+                      {SEVERITIES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
                     {incident.is_sos && <strong style={{ color: "#c62828" }}> (SOS)</strong>}
                   </td>
                   <td>{incident.status}</td>

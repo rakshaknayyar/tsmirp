@@ -45,3 +45,4 @@ class RateLimiter:
 
 login_limiter = RateLimiter(settings.login_rate_limit, settings.login_rate_window_seconds)
 sos_limiter = RateLimiter(settings.sos_rate_limit, settings.sos_rate_window_seconds)
+classify_limiter = RateLimiter(settings.classify_rate_limit, settings.classify_rate_window_seconds)

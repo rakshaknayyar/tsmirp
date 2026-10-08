@@ -120,13 +120,21 @@ function TouristHome({ session, onLogout }: { session: Session; onLogout: () => 
         ? { lat: position.lat, lon: position.lon, accuracy_m: position.accuracy_m }
         : null;
     try {
-      await apiRequest<Incident>("POST", "/incidents", {
+      const created = await apiRequest<Incident>("POST", "/incidents", {
         token,
         body: { description, category_code: categoryCode || null, location },
       });
       setDescription("");
       setCategoryCode("");
-      setMessage("Report sent. An operator will see it on the dashboard.");
+      const how =
+        created.confidence !== null && created.category
+          ? ` Automatically classified as ${created.category.name} ` +
+            `(confidence ${Math.round(created.confidence * 100)}%).`
+          : "";
+      setMessage(
+        `Report sent.${how} Severity: ${created.severity}. ` +
+          "An operator will see it on the dashboard and can correct it.",
+      );
       loadLists();
     } catch (err) {
       showError(err as Error);

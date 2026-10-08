@@ -20,6 +20,7 @@ frontend/dist/
 ml/artefacts/*
 !ml/artefacts/.gitkeep
 ml/data/raw/
+ml/data/synthetic/
 
 # Editors / OS
 .vscode/

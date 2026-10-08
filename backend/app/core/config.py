@@ -53,6 +53,14 @@ class Settings(BaseSettings):
     sos_rate_window_seconds: int = 600
     sos_last_location_max_age_seconds: int = 600  # reuse a shared location this recent
 
+    # Text classifier (trained by `python -m ml.train_text_classifier`).
+    text_model_dir: Path = REPO_ROOT / "ml" / "artefacts" / "text_classifier"
+    # Suggestions below this (calibrated) confidence are flagged for human review.
+    # Initial assumption; to be determined experimentally on real, labelled reports.
+    classify_review_threshold: float = 0.5
+    classify_rate_limit: int = 30  # classification requests per user per window
+    classify_rate_window_seconds: int = 60
+
     # No default on purpose: the API refuses to start without a real secret.
     jwt_secret: str = Field(min_length=32)
     jwt_algorithm: str = "HS256"

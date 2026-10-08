@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.incident import IncidentStatus, Severity
 
@@ -48,7 +48,10 @@ class IncidentOut(BaseModel):
     severity: Severity
     status: IncidentStatus
     is_sos: bool
+    # Calibrated confidence of the automatic category suggestion (None = chosen by a person).
     confidence: float | None
+    # True when the category should be checked by an operator (low confidence / unknown).
+    needs_review: bool
     created_at: datetime
     updated_at: datetime
     # None when there is no location, or when the viewer may not see it (consent rules).
@@ -60,3 +63,19 @@ class StatusUpdate(BaseModel):
 
     status: IncidentStatus
     note: str | None = Field(default=None, max_length=500)
+
+
+class IncidentOverride(BaseModel):
+    """Operator correction of the automatic category and/or severity (always audited)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    category_code: str | None = Field(default=None, max_length=30)
+    severity: Severity | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def something_to_change(self) -> "IncidentOverride":
+        if self.category_code is None and self.severity is None:
+            raise ValueError("Give a new category_code and/or severity")
+        return self

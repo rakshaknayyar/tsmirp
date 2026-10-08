@@ -39,7 +39,8 @@ export type Incident = {
   severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   status: IncidentStatus;
   is_sos: boolean;
-  confidence: number | null;
+  confidence: number | null; // calibrated confidence of the automatic category (null = by a person)
+  needs_review: boolean;
   created_at: string;
   updated_at: string;
   location: { lat: number; lon: number; accuracy_m: number | null; recorded_at: string } | null;
@@ -103,6 +104,8 @@ export type SosResponse = {
   nearest_help: NearbyResource[];
   advice: string;
 };
+
+export const SEVERITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 
 export type Session = { token: string; user: User };
 

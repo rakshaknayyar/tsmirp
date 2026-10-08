@@ -1,4 +1,5 @@
-"""Incident logic: creation, the status lifecycle, and who may see a location.
+"""Incident logic: creation (with automatic classification and severity rules), the status
+lifecycle, and who may see a location.
 
 Status lifecycle (the only allowed moves):
 
@@ -6,10 +7,12 @@ Status lifecycle (the only allowed moves):
                  |             |                     |
                  +-> RESOLVED  +-> RESOLVED          +-> ACKNOWLEDGED (re-open)
 
-Severity in Phase 2 is a PROVISIONAL default (MEDIUM). The real severity rules arrive in
-Phase 6; operators will be able to override them.
+Category: the tourist's own choice if given; otherwise the text classifier's suggestion
+(with its confidence); if no model is available, unknown (flagged for review).
+Severity: rule-based (app/services/severity.py). Operators can override both.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from geoalchemy2 import WKTElement
@@ -17,16 +20,20 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.ml.text_classifier import ModelUnavailable
 from app.models.incident import (
     Incident,
     IncidentCategory,
     IncidentLocation,
     IncidentStatus,
-    Severity,
 )
+from app.models.risk import ALERT_LEVELS
 from app.models.tourist import TouristProfile
 from app.models.user import User
 from app.schemas.incident import CategoryOut, IncidentCreate, IncidentOut, LocationOut
+from app.services.classification import classify_text
+from app.services.geofence import zones_containing
+from app.services.severity import SeverityAssessment, assess_severity
 
 S = IncidentStatus
 ALLOWED_TRANSITIONS: dict[IncidentStatus, set[IncidentStatus]] = {
@@ -50,6 +57,14 @@ class UnknownCategory(Exception):
     pass
 
 
+@dataclass
+class CreatedIncident:
+    incident: Incident
+    severity: SeverityAssessment
+    classified_automatically: bool
+    model_version: str | None
+
+
 def change_status(
     incident: Incident, new_status: IncidentStatus, *, by_assignment: bool = False
 ) -> IncidentStatus:
@@ -64,24 +79,50 @@ def change_status(
     return old_status
 
 
-def create_incident(db: Session, reporter: User, body: IncidentCreate) -> Incident:
-    """Store a tourist's report (and its location, if given). The caller audits and commits."""
-    category_id = None
-    if body.category_code is not None:
-        category_id = db.scalar(
-            select(IncidentCategory.id).where(IncidentCategory.code == body.category_code)
-        )
-        if category_id is None:
-            raise UnknownCategory(body.category_code)
+def category_by_code(db: Session, code: str) -> IncidentCategory:
+    category = db.scalar(select(IncidentCategory).where(IncidentCategory.code == code))
+    if category is None:
+        raise UnknownCategory(code)
+    return category
 
+
+def in_high_risk_zone(db: Session, lat: float, lon: float) -> bool:
+    return any(zone.base_level in ALERT_LEVELS for zone in zones_containing(db, lat, lon))
+
+
+def create_incident(db: Session, reporter: User, body: IncidentCreate) -> CreatedIncident:
+    """Store a tourist's report (and its location, if given). The caller audits and commits."""
+    category: IncidentCategory | None = None
+    confidence: float | None = None
+    model_version: str | None = None
+    if body.category_code is not None:
+        category = category_by_code(db, body.category_code)  # chosen by the tourist
+    else:
+        try:
+            result = classify_text(db, body.description, body.language)
+            category, confidence, model_version = (
+                result.category,
+                result.confidence,
+                result.model_version,
+            )
+        except ModelUnavailable:
+            pass  # stays uncategorised and is flagged for review
+
+    high_zone = body.location is not None and in_high_risk_zone(
+        db, body.location.lat, body.location.lon
+    )
+    severity = assess_severity(
+        body.description, category.code if category else None, in_high_risk_zone=high_zone
+    )
     incident = Incident(
         reporter_user_id=reporter.id,
-        category_id=category_id,
+        category_id=category.id if category else None,
         description=body.description,
         language=body.language,
-        severity=Severity.MEDIUM,  # provisional until the Phase 6 severity rules
+        severity=severity.severity,
         status=IncidentStatus.NEW,
         is_sos=False,
+        confidence=confidence,
     )
     db.add(incident)
     db.flush()
@@ -90,7 +131,7 @@ def create_incident(db: Session, reporter: User, body: IncidentCreate) -> Incide
         add_incident_location(
             db, incident, body.location.lat, body.location.lon, body.location.accuracy_m
         )
-    return incident
+    return CreatedIncident(incident, severity, body.category_code is None, model_version)
 
 
 def add_incident_location(
@@ -108,6 +149,18 @@ def add_incident_location(
         )
     )
     db.flush()
+
+
+def needs_review(incident: Incident) -> bool:
+    """An operator should check the category: unknown, or a low-confidence suggestion.
+    (SOS never needs a category.)"""
+    if incident.is_sos:
+        return False
+    if incident.category_id is None:
+        return True
+    return incident.confidence is not None and (
+        incident.confidence < settings.classify_review_threshold
+    )
 
 
 def _may_see_location(db: Session, incident: Incident, viewer: User | None) -> bool:
@@ -162,6 +215,7 @@ def to_incident_out(db: Session, incident: Incident, viewer: User | None) -> Inc
         status=incident.status,
         is_sos=incident.is_sos,
         confidence=incident.confidence,
+        needs_review=needs_review(incident),
         created_at=incident.created_at,
         updated_at=incident.updated_at,
         location=location,

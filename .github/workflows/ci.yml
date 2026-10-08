@@ -39,8 +39,8 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e ".[dev]"
-      - run: ruff check .
-      - run: ruff format --check .
+      - run: ruff check . ../ml
+      - run: ruff format --check . ../ml
       - run: alembic upgrade head
       - run: pytest -v
 

@@ -1,8 +1,9 @@
 """Incident routes.
 
 - Tourists report incidents and see only their own (others' incidents give 404).
-- Staff (operator, supervisor, administrator) see all incidents and change their status.
-- Every create / status change is audited and pushed live to the dashboard.
+- Staff (operator, supervisor, administrator) see all incidents, change their status, and can
+  override the automatic category and severity.
+- Every create / status change / override is audited and pushed live to the dashboard.
 """
 
 from typing import Annotated
@@ -15,12 +16,19 @@ from app.api.deps import CurrentUser, DbSession, StaffUser, TouristUser
 from app.models.incident import Incident, IncidentCategory, IncidentStatus
 from app.models.tourist import TouristProfile
 from app.models.user import STAFF_ROLES, User
-from app.schemas.incident import CategoryOut, IncidentCreate, IncidentOut, StatusUpdate
+from app.schemas.incident import (
+    CategoryOut,
+    IncidentCreate,
+    IncidentOut,
+    IncidentOverride,
+    StatusUpdate,
+)
 from app.services.audit import record_event
 from app.services.events import event_bus
 from app.services.incidents import (
     InvalidTransition,
     UnknownCategory,
+    category_by_code,
     change_status,
     create_incident,
     to_incident_out,
@@ -65,18 +73,24 @@ def report_incident(body: IncidentCreate, user: TouristUser, db: DbSession) -> I
                 "(PUT /tourist/consent). You can also report without a location.",
             )
     try:
-        incident = create_incident(db, reporter=user, body=body)
+        created = create_incident(db, reporter=user, body=body)
     except UnknownCategory:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown incident category"
         ) from None
+    incident = created.incident
     record_event(
         db,
         "incident.reported",
         actor_user_id=user.id,
         target_type="incident",
         target_id=incident.id,
-        details={"with_location": body.location is not None},
+        details={
+            "with_location": body.location is not None,
+            "classified_automatically": created.classified_automatically,
+            "model_version": created.model_version,
+            "severity_reasons": created.severity.reasons,
+        },
     )
     db.commit()
 
@@ -105,6 +119,44 @@ def list_incidents(
 @router.get("/incidents/{incident_id}", response_model=IncidentOut)
 def get_incident(incident_id: int, user: CurrentUser, db: DbSession) -> IncidentOut:
     return to_incident_out(db, _visible_incident(db, incident_id, user), viewer=user)
+
+
+@router.patch("/incidents/{incident_id}", response_model=IncidentOut)
+def override_incident(
+    incident_id: int, body: IncidentOverride, staff: StaffUser, db: DbSession
+) -> IncidentOut:
+    """Operator override of category and/or severity (e.g. downgrading an SOS).
+    A category set by a person replaces the model's suggestion, so its confidence is cleared."""
+    incident = db.get(Incident, incident_id, with_for_update=True)
+    if incident is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Incident not found")
+    changes: dict = {}
+    if body.category_code is not None:
+        try:
+            category = category_by_code(db, body.category_code)
+        except UnknownCategory:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown incident category"
+            ) from None
+        old = db.get(IncidentCategory, incident.category_id) if incident.category_id else None
+        changes["category"] = {"from": old.code if old else None, "to": category.code}
+        incident.category_id = category.id
+        incident.confidence = None  # now confirmed by a person
+    if body.severity is not None:
+        changes["severity"] = {"from": incident.severity.value, "to": body.severity.value}
+        incident.severity = body.severity
+    record_event(
+        db,
+        "incident.override",
+        actor_user_id=staff.id,
+        target_type="incident",
+        target_id=incident.id,
+        details={**changes, "note": body.note},
+    )
+    db.commit()
+
+    _broadcast(db, "incident.updated", incident)
+    return to_incident_out(db, incident, viewer=staff)
 
 
 @router.patch("/incidents/{incident_id}/status", response_model=IncidentOut)

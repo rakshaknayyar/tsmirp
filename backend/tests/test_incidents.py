@@ -38,10 +38,13 @@ def test_tourist_reports_incident(client, users):
     assert response.status_code == 201
     body = response.json()
     assert body["status"] == "NEW"
-    assert body["severity"] == "MEDIUM"  # provisional until Phase 6
+    # The brief's example: "My phone was stolen near the market" => Theft / HIGH / Police.
+    assert body["severity"] == "HIGH"
     assert body["category"]["department"] == "Police"
     assert body["is_sos"] is False
     assert body["location"] is None
+    assert body["needs_review"] is False  # category chosen by the tourist
+    assert body["confidence"] is None
 
 
 def test_unknown_category_is_rejected(client, users):

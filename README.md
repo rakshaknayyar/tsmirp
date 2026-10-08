@@ -5,7 +5,20 @@ B.Tech final-year prototype for Smart India Hackathon problem statement **SIH250
 > **Decision support only.** TSMIRP is not a replacement for police or emergency services.
 > In a real emergency, call **112**.
 
-## Current status: Phase 5 (SOS, simulated dispatch, sandbox notifications)
+## Current status: Phase 6 (text classifier, severity rules, classification)
+- Synthetic incident texts (English, Hindi, romanised Hindi; seeded templates) and a
+  TF-IDF + logistic regression classifier: `python -m ml.train_text_classifier`
+  (report: `ml/reports/text_classifier.md`, **synthetic data - not real-world accuracy**)
+- `POST /incident/classify`: category + calibrated confidence + department + severity with
+  reasons; low confidence (< 0.5, initial assumption) or an unsupported language is flagged
+  for human review. Rate-limited
+- New reports without a category are classified automatically; severity always comes from
+  explainable rules (`app/services/severity.py`), e.g. "My phone was stolen near the market"
+  => Theft / HIGH / Police
+- Operators can override category and severity on the dashboard (`PATCH /incidents/{id}`);
+  every override is audited
+
+## Phase 5 (SOS, simulated dispatch, sandbox notifications)
 - SOS button with a 5-second cancel window in the app; `POST /sos` creates a CRITICAL
   incident (`is_sos`, no category - SOS skips classification). An open SOS is returned
   instead of creating a duplicate. Rate-limited (3 per 10 min per account; the error says
@@ -91,6 +104,8 @@ B.Tech final-year prototype for Smart India Hackathon problem statement **SIH250
 | WS | /ws/dashboard | operator, supervisor, administrator (token sent in first message) |
 | WS | /ws/tourist | tourist (own incidents only; token sent in first message) |
 | POST | /sos | tourist (rate-limited) |
+| POST | /incident/classify | any logged-in user (rate-limited; 503 if no model trained) |
+| PATCH | /incidents/{id} | operator, supervisor, administrator (override category / severity) |
 | POST | /sos/{id}/cancel | tourist (own SOS only) |
 | GET | /nearby-resources?lat=&lon=&type=&k= | any logged-in user |
 | GET | /incidents/{id}/recommended-resources | operator, supervisor, administrator |
@@ -116,6 +131,7 @@ Requirements: PostgreSQL 16 with PostGIS, Python 3.11+, Node 22. Redis is option
    python -m app.cli create-admin --email you@example.org --name "Your Name"
    python -m app.cli import-osm --area jaipur
    python -m app.cli seed-zones
+   cd .. && python -m ml.train_text_classifier && cd backend
    uvicorn app.main:app --reload
    ```
    `create-admin` asks for the password without showing it. Run it once.

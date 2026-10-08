@@ -21,8 +21,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import engine, get_db
-from app.core.rate_limit import login_limiter, sos_limiter
+from app.core.rate_limit import classify_limiter, login_limiter, sos_limiter
 from app.main import app
+from app.ml import text_classifier
 from app.models.user import Role, User
 from app.services.users import create_user
 
@@ -71,6 +72,7 @@ def app_client(db: Session) -> Iterator[TestClient]:
     app.dependency_overrides[get_db] = lambda: db
     login_limiter.reset()
     sos_limiter.reset()
+    classify_limiter.reset()
     try:
         with TestClient(app) as test_client:
             yield test_client
@@ -79,11 +81,16 @@ def app_client(db: Session) -> Iterator[TestClient]:
 
 
 @pytest.fixture
-def client(db: Session, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+def client(db: Session, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[TestClient]:
     # In-process events, so tests do not depend on Redis (test_dashboard.py checks Redis).
     monkeypatch.setattr(settings, "event_backend", "memory")
+    # No text model by default, so results never depend on what was trained on this machine.
+    # Tests that need the model use the `text_model` fixture (test_classification.py).
+    monkeypatch.setattr(settings, "text_model_dir", tmp_path / "no-model")
+    text_classifier.reset_cache()
     with app_client(db) as test_client:
         yield test_client
+    text_classifier.reset_cache()
 
 
 def make_user(db: Session, role: Role, name: str | None = None) -> User:
