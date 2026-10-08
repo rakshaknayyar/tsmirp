@@ -1,5 +1,6 @@
-// Authority dashboard (bare Phase 2 version): live incident list + status buttons.
-// New incidents and status changes arrive over the WebSocket without refreshing the page.
+// Authority dashboard: map, live geofence alerts, live incident list + status buttons.
+// New incidents, status changes and geofence alerts arrive over the WebSocket without
+// refreshing the page.
 
 import { Fragment, useCallback, useEffect, useState } from "react";
 
@@ -8,6 +9,7 @@ import LoginForm from "../shared/LoginForm";
 import SimulationNotice from "../shared/SimulationNotice";
 import { STAFF_ROLES } from "../shared/types";
 import type { Incident, IncidentStatus, Session } from "../shared/types";
+import DashboardMap from "./DashboardMap";
 import ResourcePicker from "./ResourcePicker";
 
 // Buttons offered for each status. Mirrors the backend lifecycle, except ASSIGNED, which is
@@ -21,9 +23,17 @@ const NEXT_STATUSES: Record<IncidentStatus, IncidentStatus[]> = {
   CLOSED: [],
 };
 
+type GeofenceAlert = {
+  type: "geofence.alert";
+  tourist_user_id: number;
+  zone: { id: number; name: string; level: string };
+  at: string;
+};
+
 type LiveEvent =
   | { type: "ready"; mode: string }
-  | { type: "incident.created" | "incident.status_changed"; incident: Incident };
+  | { type: "incident.created" | "incident.status_changed"; incident: Incident }
+  | GeofenceAlert;
 
 export default function DashboardApp() {
   const [session, setSession] = useState<Session | null>(null);
@@ -53,6 +63,7 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
   const [liveMode, setLiveMode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pickerFor, setPickerFor] = useState<number | null>(null); // incident id
+  const [alerts, setAlerts] = useState<GeofenceAlert[]>([]);
 
   useEffect(() => {
     apiGet<Incident[]>("/incidents", session.token)
@@ -72,6 +83,7 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
       socket.onmessage = (message) => {
         const event = JSON.parse(message.data) as LiveEvent;
         if (event.type === "ready") setLiveMode(event.mode);
+        else if (event.type === "geofence.alert") setAlerts((list) => [event, ...list].slice(0, 10));
         else setIncidents((list) => upsert(list, event.incident));
       };
       socket.onclose = () => {
@@ -114,60 +126,80 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
       </p>
       {error && <p role="alert">{error}</p>}
 
-      <table style={{ borderCollapse: "collapse", width: "100%" }}>
-        <thead>
-          <tr style={{ textAlign: "left" }}>
-            <th>#</th>
-            <th>Reported</th>
-            <th>Category</th>
-            <th>Department</th>
-            <th>Severity</th>
-            <th>Status</th>
-            <th>Description</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {incidents.map((incident) => (
-            <Fragment key={incident.id}>
-              <tr style={{ borderTop: "1px solid #ddd" }}>
-                <td>{incident.id}</td>
-                <td>{new Date(incident.created_at).toLocaleString()}</td>
-                <td>{incident.category?.name ?? "Uncategorised"}</td>
-                <td>{incident.category?.department ?? "-"}</td>
-                <td>{incident.severity}</td>
-                <td>{incident.status}</td>
-                <td>{incident.description}</td>
-                <td>
-                  {NEXT_STATUSES[incident.status].map((next) => (
-                    <button key={next} onClick={() => changeStatus(incident, next)}>
-                      {next}
-                    </button>
-                  ))}
-                  {incident.status === "ACKNOWLEDGED" && incident.location && (
-                    <button onClick={() => setPickerFor(incident.id)}>Recommend resources</button>
-                  )}
-                </td>
-              </tr>
-              {pickerFor === incident.id && (
-                <tr>
-                  <td colSpan={8}>
-                    <ResourcePicker
-                      incident={incident}
-                      token={session.token}
-                      onAssigned={(updated) => {
-                        setIncidents((list) => upsert(list, updated));
-                        setPickerFor(null);
-                      }}
-                      onClose={() => setPickerFor(null)}
-                    />
+      <DashboardMap token={session.token} incidents={incidents} />
+
+      <h2>Geofence alerts (live)</h2>
+      {alerts.length === 0 ? (
+        <p>None since you logged in.</p>
+      ) : (
+        <ul>
+          {alerts.map((a) => (
+            <li key={`${a.at}-${a.tourist_user_id}-${a.zone.id}`}>
+              {new Date(a.at).toLocaleTimeString()} - tourist #{a.tourist_user_id} has stayed in{" "}
+              {a.zone.name} ({a.zone.level})
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <h2>Incidents</h2>
+      {/* The table scrolls sideways inside this box on narrow screens, not the whole page. */}
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+          <thead>
+            <tr style={{ textAlign: "left" }}>
+              <th>#</th>
+              <th>Reported</th>
+              <th>Category</th>
+              <th>Department</th>
+              <th>Severity</th>
+              <th>Status</th>
+              <th>Description</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {incidents.map((incident) => (
+              <Fragment key={incident.id}>
+                <tr style={{ borderTop: "1px solid #ddd" }}>
+                  <td>{incident.id}</td>
+                  <td>{new Date(incident.created_at).toLocaleString()}</td>
+                  <td>{incident.category?.name ?? "Uncategorised"}</td>
+                  <td>{incident.category?.department ?? "-"}</td>
+                  <td>{incident.severity}</td>
+                  <td>{incident.status}</td>
+                  <td>{incident.description}</td>
+                  <td>
+                    {NEXT_STATUSES[incident.status].map((next) => (
+                      <button key={next} onClick={() => changeStatus(incident, next)}>
+                        {next}
+                      </button>
+                    ))}
+                    {incident.status === "ACKNOWLEDGED" && incident.location && (
+                      <button onClick={() => setPickerFor(incident.id)}>Recommend resources</button>
+                    )}
                   </td>
                 </tr>
-              )}
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
+                {pickerFor === incident.id && (
+                  <tr>
+                    <td colSpan={8}>
+                      <ResourcePicker
+                        incident={incident}
+                        token={session.token}
+                        onAssigned={(updated) => {
+                          setIncidents((list) => upsert(list, updated));
+                          setPickerFor(null);
+                        }}
+                        onClose={() => setPickerFor(null)}
+                      />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {incidents.length === 0 && <p>No incidents yet.</p>}
     </>
   );

@@ -1,0 +1,54 @@
+{
+  "_note": "SYNTHETIC demonstration zones for the TSMIRP prototype. Centres are well-known public places in Jaipur; the circles, radii and risk levels were chosen by hand to exercise the geofence and map features. They are NOT derived from crime data and say nothing about real safety at these places.",
+  "source": "synthetic-seed",
+  "zones": [
+    {
+      "name": "Synthetic zone A - Hawa Mahal / Johari Bazaar",
+      "lat": 26.9225,
+      "lon": 75.8255,
+      "radius_m": 350,
+      "level": "HIGH",
+      "description": "Busy market and monument area (synthetic level for demo)."
+    },
+    {
+      "name": "Synthetic zone B - Jaipur Junction station",
+      "lat": 26.9196,
+      "lon": 75.7878,
+      "radius_m": 400,
+      "level": "CRITICAL",
+      "description": "Railway station surroundings (synthetic level for demo)."
+    },
+    {
+      "name": "Synthetic zone C - Amer Fort approach",
+      "lat": 26.9855,
+      "lon": 75.8513,
+      "radius_m": 500,
+      "level": "MODERATE",
+      "description": "Fort approach road (synthetic level for demo)."
+    },
+    {
+      "name": "Synthetic zone D - Nahargarh hill road",
+      "lat": 26.9373,
+      "lon": 75.8155,
+      "radius_m": 600,
+      "level": "HIGH",
+      "description": "Hill road with few people after dark (synthetic level for demo)."
+    },
+    {
+      "name": "Synthetic zone E - Jal Mahal promenade",
+      "lat": 26.9535,
+      "lon": 75.8462,
+      "radius_m": 300,
+      "level": "LOW",
+      "description": "Lakeside promenade (synthetic level for demo)."
+    },
+    {
+      "name": "Synthetic zone F - City Palace",
+      "lat": 26.9258,
+      "lon": 75.8237,
+      "radius_m": 200,
+      "level": "MODERATE",
+      "description": "Palace complex (synthetic level for demo)."
+    }
+  ]
+}

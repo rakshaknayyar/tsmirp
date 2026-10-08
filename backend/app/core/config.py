@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     # would outrank a BUSY one next door.
     recommend_max_distance_m: float = 25_000
 
+    # Geofencing (initial assumptions, configurable; see app/services/geofence.py).
+    geofence_max_accuracy_m: float = 100  # fixes less accurate than this are ignored
+    geofence_dwell_seconds: int = 60  # must stay inside this long before an alert
+    geofence_cooldown_seconds: int = 600  # no repeat alert for the same zone within this
+    geofence_near_m: float = 200  # zones this close are reported as "nearby" (no alert)
+
     # No default on purpose: the API refuses to start without a real secret.
     jwt_secret: str = Field(min_length=32)
     jwt_algorithm: str = "HS256"

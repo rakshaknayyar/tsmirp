@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import admin, auth, dashboard, health, incidents, resources, tourist
+from app.api import admin, auth, dashboard, health, incidents, resources, risk, tourist
 from app.services.events import event_bus
 
 
@@ -35,5 +35,6 @@ app.include_router(auth.router)
 app.include_router(tourist.router)
 app.include_router(incidents.router)
 app.include_router(resources.router)
+app.include_router(risk.router)
 app.include_router(dashboard.router)
 app.include_router(admin.router)

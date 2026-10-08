@@ -59,6 +59,41 @@ export type RecommendedResource = {
   capability_match: boolean;
 };
 
+export type RiskLevel = "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
+
+export type ZoneBrief = { id: number; name: string; level: RiskLevel; is_synthetic: boolean };
+
+export type AppNotification = {
+  id: number;
+  kind: string;
+  channel: "in_app" | "sms_sandbox" | "email_sandbox";
+  title: string;
+  body: string;
+  incident_id: number | null;
+  zone_id: number | null;
+  simulated: boolean;
+  created_at: string;
+  read_at: string | null;
+};
+
+export type FixResult = {
+  accepted: boolean;
+  reason: string | null;
+  inside_zones: ZoneBrief[];
+  nearby_zones: ZoneBrief[];
+  alerts: AppNotification[];
+};
+
+export type Position = { lat: number; lon: number; accuracy_m: number; simulated: boolean };
+
+export type Profile = {
+  nationality: string | null;
+  phone: string | null;
+  preferred_language: string;
+  location_consent: boolean;
+  consent_time: string | null;
+};
+
 export type Session = { token: string; user: User };
 
 export const STAFF_ROLES: Role[] = ["operator", "supervisor", "administrator"];

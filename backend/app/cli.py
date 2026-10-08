@@ -12,6 +12,10 @@ Import police stations, hospitals and fire stations from OpenStreetMap for the d
     python -m app.cli import-osm --area jaipur --from-file ../ml/data/raw/osm_jaipur.json
 
 A download is saved to ml/data/raw/osm_<area>.json so the import can be repeated offline.
+
+Load the SYNTHETIC demo risk zones (hand-made, not crime data):
+
+    python -m app.cli seed-zones
 """
 
 import argparse
@@ -25,8 +29,10 @@ from app.models.user import Role
 from app.services import osm_import
 from app.services.audit import record_event
 from app.services.users import EmailAlreadyRegistered, create_user
+from app.services.zones import seed_zones
 
 MIN_PASSWORD_LENGTH = 10
+DEFAULT_ZONES_FILE = REPO_ROOT / "ml" / "data" / "synthetic_risk_zones_jaipur.json"
 
 
 def create_admin(email: str, full_name: str) -> None:
@@ -83,6 +89,18 @@ def import_osm(area: str, from_file: Path | None) -> None:
     print(f"Created {created}, updated {updated}. Data (c) OpenStreetMap contributors, ODbL.")
 
 
+def seed_zones_command(path: Path) -> None:
+    with SessionLocal() as db:
+        created, updated = seed_zones(db, path)
+        record_event(
+            db,
+            "risk_zones.seeded",
+            details={"file": path.name, "created": created, "updated": updated, "synthetic": True},
+        )
+        db.commit()
+    print(f"Risk zones from {path.name}: created {created}, updated {updated} (SYNTHETIC data).")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -95,11 +113,16 @@ def main() -> None:
     osm_cmd.add_argument("--area", choices=sorted(osm_import.DEMO_AREAS), default="jaipur")
     osm_cmd.add_argument("--from-file", type=Path, help="use a saved Overpass JSON file")
 
+    zones_cmd = commands.add_parser("seed-zones", help="load the synthetic demo risk zones")
+    zones_cmd.add_argument("--file", type=Path, default=DEFAULT_ZONES_FILE)
+
     args = parser.parse_args()
     if args.command == "create-admin":
         create_admin(args.email, args.name)
     elif args.command == "import-osm":
         import_osm(args.area, args.from_file)
+    elif args.command == "seed-zones":
+        seed_zones_command(args.file)
 
 
 if __name__ == "__main__":

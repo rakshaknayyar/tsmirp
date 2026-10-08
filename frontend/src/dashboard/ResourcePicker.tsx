@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 
 import { apiGet, apiRequest } from "../shared/api";
+import { formatDistance } from "../shared/mapUtils";
 import type { Incident, RecommendedResource } from "../shared/types";
 
 type Props = {
@@ -12,10 +13,6 @@ type Props = {
   onAssigned: (incident: Incident) => void;
   onClose: () => void;
 };
-
-function formatDistance(metres: number): string {
-  return metres < 1000 ? `${Math.round(metres)} m` : `${(metres / 1000).toFixed(1)} km`;
-}
 
 export default function ResourcePicker({ incident, token, onAssigned, onClose }: Props) {
   const [resources, setResources] = useState<RecommendedResource[] | null>(null);

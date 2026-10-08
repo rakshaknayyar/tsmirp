@@ -1,8 +1,10 @@
-"""Tourist profile (with location consent) and emergency contacts."""
+"""Tourist profile (with location consent and latest location) and emergency contacts."""
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, func
+from geoalchemy2 import Geometry
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -20,6 +22,19 @@ class TouristProfile(Base):
     location_consent: Mapped[bool] = mapped_column(Boolean, default=False)
     # When the tourist last granted or revoked consent (None = never decided).
     consent_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Only the LATEST location is kept (no movement history). Cleared when consent is revoked
+    # and hidden after last_location_expires_at.
+    last_location: Mapped[str | None] = mapped_column(
+        Geometry("POINT", srid=4326, spatial_index=False)
+    )
+    last_location_accuracy_m: Mapped[float | None] = mapped_column(Float)
+    last_location_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_location_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Per-zone dwell/debounce memory for geofence alerts (see app/services/geofence.py):
+    # {"<zone id>": {"inside_since": ISO time or null, "alerted_at": ISO time or null}}
+    geofence_state: Mapped[dict] = mapped_column(JSONB, default=dict)
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

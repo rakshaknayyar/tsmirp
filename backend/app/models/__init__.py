@@ -9,6 +9,7 @@ from app.models.incident import (
     IncidentStatus,
     Severity,
 )
+from app.models.notification import Notification, NotificationChannel
 from app.models.resource import (
     AssignmentStatus,
     Availability,
@@ -16,10 +17,12 @@ from app.models.resource import (
     ResponseAssignment,
     ResponseResource,
 )
+from app.models.risk import ALERT_LEVELS, RiskLevel, RiskZone
 from app.models.tourist import EmergencyContact, TouristProfile
 from app.models.user import Role, User
 
 __all__ = [
+    "ALERT_LEVELS",
     "AssignmentStatus",
     "AuditLog",
     "Availability",
@@ -29,9 +32,13 @@ __all__ = [
     "IncidentCategory",
     "IncidentLocation",
     "IncidentStatus",
+    "Notification",
+    "NotificationChannel",
     "ResourceType",
     "ResponseAssignment",
     "ResponseResource",
+    "RiskLevel",
+    "RiskZone",
     "Role",
     "Severity",
     "TouristProfile",

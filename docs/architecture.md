@@ -34,4 +34,11 @@ falls back), events are delivered inside the single API process.
   the incident marks it AVAILABLE again.
 - Demo area bounding box (Jaipur): south 26.80, west 75.70, north 27.00, east 75.90.
 - Stored locations expire after 30 days (`LOCATION_RETENTION_DAYS`).
+- Tourist location storage: the brief's 12 tables have no tourist-location table, so only the
+  LATEST fix is kept as columns on `tourist_profiles` (no movement history). Geofence dwell
+  state is a small JSON column there too.
+- Geofence parameters: ignore fixes worse than 100 m; alert after 60 s dwell; 10 min cooldown
+  per zone; "nearby" = within 200 m (`GEOFENCE_*` settings).
+- Risk zones in the demo are synthetic circles (ml/data/synthetic_risk_zones_jaipur.json).
+  A zone's level is its `base_level`; the risk model (Phase 7) will add predicted levels.
 - Staff see an incident's location only while the reporter's consent is on, or for an SOS.

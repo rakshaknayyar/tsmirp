@@ -8,6 +8,13 @@
       "port": 8000
     },
     {
+      "name": "api-preview",
+      "runtimeExecutable": "backend/.venv/Scripts/uvicorn.exe",
+      "runtimeArgs": ["app.main:app", "--app-dir", "backend", "--port", "8000"],
+      "env": { "POSTGRES_DB": "tsmirp_preview" },
+      "port": 8000
+    },
+    {
       "name": "web",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "frontend"],

@@ -5,7 +5,21 @@ B.Tech final-year prototype for Smart India Hackathon problem statement **SIH250
 > **Decision support only.** TSMIRP is not a replacement for police or emergency services.
 > In a real emergency, call **112**.
 
-## Current status: Phase 3 (response resources, nearest-resource ranking)
+## Current status: Phase 4 (risk zones, geofencing, maps)
+- Risk zones (PostGIS polygons, GiST index) with a RELATIVE level LOW / MODERATE / HIGH /
+  CRITICAL. The Jaipur demo zones are **synthetic** (hand-made circles around public places,
+  not crime data): `python -m app.cli seed-zones`
+- `POST /tourist/location` (consent required): ignores fixes worse than 100 m accuracy, stores
+  only the latest position, checks zones with `ST_Contains` (inside) and `ST_DWithin` (nearby)
+- Geofence alerts only for HIGH / CRITICAL zones, after 60 s inside, at most once per entry
+  with a 10-minute cooldown (all configurable assumptions); alerts go to the tourist (in-app),
+  the audit log (no coordinates) and the live dashboard
+- Staff can view a tourist's location only with consent or during an active SOS; every view
+  is audited. Revoking consent deletes the stored location immediately
+- Leaflet maps with OpenStreetMap tiles in both apps; the tourist app has a "demo position"
+  option (simulated GPS at a Jaipur landmark) for testing from anywhere
+
+## Phase 3 (response resources, nearest-resource ranking)
 - Police stations, hospitals and fire stations for the demo area (Jaipur) imported from
   OpenStreetMap: `python -m app.cli import-osm --area jaipur`
 - Nearest search with PostGIS KNN (`<->`) on geography; recommendations filtered by the
@@ -63,6 +77,10 @@ B.Tech final-year prototype for Smart India Hackathon problem statement **SIH250
 | GET | /nearby-resources?lat=&lon=&type=&k= | any logged-in user |
 | GET | /incidents/{id}/recommended-resources | operator, supervisor, administrator |
 | POST | /incidents/{id}/assign | operator, supervisor, administrator (simulated dispatch) |
+| POST | /tourist/location | tourist (consent required) |
+| GET | /tourist/notifications | tourist (own only) |
+| GET | /tourist/location/{user_id} | operator, supervisor, administrator (consent or active SOS; audited) |
+| GET | /risk-zone?bbox=minLon,minLat,maxLon,maxLat | any logged-in user (GeoJSON) |
 
 ## Run locally on Windows (no Docker)
 
@@ -79,6 +97,7 @@ Requirements: PostgreSQL 16 with PostGIS, Python 3.11+, Node 22. Redis is option
    alembic upgrade head
    python -m app.cli create-admin --email you@example.org --name "Your Name"
    python -m app.cli import-osm --area jaipur
+   python -m app.cli seed-zones
    uvicorn app.main:app --reload
    ```
    `create-admin` asks for the password without showing it. Run it once.

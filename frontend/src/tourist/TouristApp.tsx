@@ -1,5 +1,6 @@
-// Tourist app (bare Phase 2 version): log in, report an incident, see my incidents.
-// Location sharing, the map and SOS are added in Phases 4 and 5.
+// Tourist app: log in, location consent + sharing with geofence alerts, map with risk zones
+// and nearby help, incident reports, my incidents and my notifications.
+// SOS is added in Phase 5.
 
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
@@ -7,7 +8,17 @@ import type { FormEvent } from "react";
 import { apiGet, apiRequest } from "../shared/api";
 import LoginForm from "../shared/LoginForm";
 import SimulationNotice from "../shared/SimulationNotice";
-import type { Category, Incident, Session } from "../shared/types";
+import type {
+  AppNotification,
+  Category,
+  FixResult,
+  Incident,
+  Position,
+  Profile,
+  Session,
+} from "../shared/types";
+import LocationPanel from "./LocationPanel";
+import TouristMap from "./TouristMap";
 
 export default function TouristApp() {
   const [session, setSession] = useState<Session | null>(null);
@@ -23,45 +34,79 @@ export default function TouristApp() {
   if (session.user.role !== "tourist") {
     return <p>This page is for tourists. Staff should use the authority dashboard.</p>;
   }
-  return <ReportAndList session={session} onLogout={() => setSession(null)} />;
+  return <TouristHome session={session} onLogout={() => setSession(null)} />;
 }
 
-function ReportAndList({ session, onLogout }: { session: Session; onLogout: () => void }) {
+function TouristHome({ session, onLogout }: { session: Session; onLogout: () => void }) {
+  const { token } = session;
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [position, setPosition] = useState<Position | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [description, setDescription] = useState("");
   const [categoryCode, setCategoryCode] = useState("");
+  const [attachLocation, setAttachLocation] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const loadIncidents = useCallback(() => {
-    apiGet<Incident[]>("/incidents", session.token)
-      .then(setIncidents)
-      .catch((err: Error) => setMessage(err.message));
-  }, [session.token]);
+  const showError = (err: Error) => setMessage(err.message);
+
+  const loadLists = useCallback(() => {
+    apiGet<Incident[]>("/incidents", token).then(setIncidents).catch(showError);
+    apiGet<AppNotification[]>("/tourist/notifications", token)
+      .then(setNotifications)
+      .catch(showError);
+  }, [token]);
 
   useEffect(() => {
-    apiGet<Category[]>("/incident-categories", session.token)
-      .then(setCategories)
-      .catch((err: Error) => setMessage(err.message));
-    loadIncidents();
-  }, [session.token, loadIncidents]);
+    apiGet<Profile>("/tourist/profile", token).then(setProfile).catch(showError);
+    apiGet<Category[]>("/incident-categories", token).then(setCategories).catch(showError);
+    loadLists();
+  }, [token, loadLists]);
+
+  async function changeConsent(consent: boolean) {
+    try {
+      const updated = await apiRequest<Profile>("PUT", "/tourist/consent", {
+        token,
+        body: { location_consent: consent },
+      });
+      setProfile(updated);
+      if (!consent) {
+        setPosition(null); // the server has deleted the stored location
+        setAttachLocation(false);
+      }
+    } catch (err) {
+      showError(err as Error);
+    }
+  }
+
+  function handleShared(newPosition: Position, result: FixResult) {
+    if (result.accepted) setPosition(newPosition);
+    if (result.alerts.length > 0) loadLists();
+  }
 
   async function handleReport(event: FormEvent) {
     event.preventDefault();
     setMessage(null);
+    const location =
+      attachLocation && position
+        ? { lat: position.lat, lon: position.lon, accuracy_m: position.accuracy_m }
+        : null;
     try {
       await apiRequest<Incident>("POST", "/incidents", {
-        token: session.token,
-        body: { description, category_code: categoryCode || null },
+        token,
+        body: { description, category_code: categoryCode || null, location },
       });
       setDescription("");
       setCategoryCode("");
       setMessage("Report sent. An operator will see it on the dashboard.");
-      loadIncidents();
+      loadLists();
     } catch (err) {
-      setMessage((err as Error).message);
+      showError(err as Error);
     }
   }
+
+  const consent = profile?.location_consent ?? false;
 
   return (
     <>
@@ -69,6 +114,14 @@ function ReportAndList({ session, onLogout }: { session: Session; onLogout: () =
       <p>
         Logged in as {session.user.full_name} <button onClick={onLogout}>Log out</button>
       </p>
+
+      <LocationPanel
+        token={token}
+        consent={consent}
+        onConsentChange={changeConsent}
+        onShared={handleShared}
+      />
+      <TouristMap token={token} position={position} />
 
       <h2>Report an incident</h2>
       <form onSubmit={handleReport} style={{ display: "grid", gap: 8, maxWidth: 480 }}>
@@ -89,6 +142,16 @@ function ReportAndList({ session, onLogout }: { session: Session; onLogout: () =
           rows={4}
           required
         />
+        <label>
+          <input
+            type="checkbox"
+            checked={attachLocation}
+            disabled={!consent || position === null}
+            onChange={(e) => setAttachLocation(e.target.checked)}
+          />{" "}
+          Attach my last shared location
+          {(!consent || position === null) && " (share your location first)"}
+        </label>
         <button type="submit">Send report</button>
       </form>
       {message && <p role="status">{message}</p>}
@@ -106,7 +169,20 @@ function ReportAndList({ session, onLogout }: { session: Session; onLogout: () =
           ))}
         </ul>
       )}
-      <button onClick={loadIncidents}>Refresh</button>
+
+      <h2>My notifications</h2>
+      {notifications.length === 0 ? (
+        <p>None.</p>
+      ) : (
+        <ul>
+          {notifications.map((n) => (
+            <li key={n.id}>
+              {new Date(n.created_at).toLocaleString()} - <strong>{n.title}</strong>: {n.body}
+            </li>
+          ))}
+        </ul>
+      )}
+      <button onClick={loadLists}>Refresh</button>
     </>
   );
 }
