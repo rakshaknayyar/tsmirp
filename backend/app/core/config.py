@@ -5,6 +5,7 @@ root), so no passwords or secrets are written in the code.
 """
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,6 +29,12 @@ class Settings(BaseSettings):
     postgres_db: str = "tsmirp"
 
     redis_url: str = "redis://localhost:6379/0"
+    # Live dashboard events: "redis" = Redis pub/sub (required), "memory" = inside this API
+    # process only, "auto" = Redis if it is reachable at startup, otherwise memory.
+    event_backend: Literal["auto", "redis", "memory"] = "auto"
+
+    # Stored locations expire after this many days (initial assumption, configurable).
+    location_retention_days: int = 30
 
     # No default on purpose: the API refuses to start without a real secret.
     jwt_secret: str = Field(min_length=32)

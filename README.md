@@ -5,7 +5,18 @@ B.Tech final-year prototype for Smart India Hackathon problem statement **SIH250
 > **Decision support only.** TSMIRP is not a replacement for police or emergency services.
 > In a real emergency, call **112**.
 
-## Current status: Phase 1 (auth, roles, consent, audit log)
+## Current status: Phase 2 (incidents, status lifecycle, live dashboard)
+- Tourists report incidents (9 categories, each with a suggested department); a location can
+  only be attached when location consent is on
+- Status lifecycle NEW -> ACKNOWLEDGED -> ASSIGNED -> EN_ROUTE -> RESOLVED -> CLOSED, enforced
+  by the API (invalid moves get 409); every change is audited
+- Live authority dashboard over WebSocket (`/ws/dashboard`), via Redis pub/sub when Redis is
+  running, otherwise in-process (fine for a single-machine demo)
+- Severity is a provisional MEDIUM until the severity rules in Phase 6
+- Web pages: `#/tourist` (log in or sign up, report, my incidents) and `#/dashboard`
+  (staff log in, live incident list, status buttons)
+
+### Earlier phases
 - FastAPI backend with `GET /health` (checks API, PostgreSQL + PostGIS, Redis)
 - Accounts with Argon2id password hashing and JWT access (15 min) + refresh (7 days) tokens
 - Roles: tourist, operator, supervisor, administrator. Public sign-up creates tourists only;
@@ -28,6 +39,11 @@ B.Tech final-year prototype for Smart India Hackathon problem statement **SIH250
 | DELETE | /tourist/emergency-contacts/{id} | tourist (own contacts only) |
 | POST | /admin/users | administrator |
 | GET | /audit-logs, /audit-logs/verify | supervisor, administrator |
+| GET | /incident-categories | any logged-in user |
+| POST | /incidents | tourist |
+| GET | /incidents, /incidents/{id} | tourist (own only), staff (all) |
+| PATCH | /incidents/{id}/status | operator, supervisor, administrator |
+| WS | /ws/dashboard | operator, supervisor, administrator (token sent in first message) |
 
 ## Run locally on Windows (no Docker)
 

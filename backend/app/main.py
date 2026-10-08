@@ -3,9 +3,21 @@
 Run locally with:  uvicorn app.main:app --reload   (from the backend folder)
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
-from app.api import admin, auth, health, tourist
+from app.api import admin, auth, dashboard, health, incidents, tourist
+from app.services.events import event_bus
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    await event_bus.start()  # connect to Redis (or fall back to in-process events)
+    yield
+    await event_bus.stop()
+
 
 app = FastAPI(
     title="TSMIRP API",
@@ -15,9 +27,12 @@ app = FastAPI(
         "Decision support only - not a replacement for police or emergency services. "
         "Dispatch, SMS and e-mail are SIMULATED."
     ),
+    lifespan=lifespan,
 )
 
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(tourist.router)
+app.include_router(incidents.router)
+app.include_router(dashboard.router)
 app.include_router(admin.router)

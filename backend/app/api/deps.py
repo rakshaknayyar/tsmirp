@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import ACCESS, TokenError, decode_token
-from app.models.user import Role, User
+from app.models.user import STAFF_ROLES, Role, User
 
 DbSession = Annotated[Session, Depends(get_db)]
 
@@ -21,27 +21,34 @@ DbSession = Annotated[Session, Depends(get_db)]
 _bearer = HTTPBearer(auto_error=False)
 
 
-def get_current_user(
-    db: DbSession,
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
-) -> User:
-    unauthorized = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Not authenticated",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    if credentials is None:
-        raise unauthorized
+def user_from_access_token(db: Session, token: str | None) -> User | None:
+    """Return the active user an access token belongs to, or None if it is not valid.
+    Also used by the WebSocket, which cannot use the Authorization header."""
+    if not token:
+        return None
     try:
-        payload = decode_token(credentials.credentials, ACCESS)
+        payload = decode_token(token, ACCESS)
     except TokenError:
-        raise unauthorized from None
-
+        return None
     # Load the user fresh from the database, so a deactivated account or a changed role
     # takes effect immediately, not only when the token expires.
     user = db.get(User, int(payload["sub"]))
     if user is None or not user.is_active:
-        raise unauthorized
+        return None
+    return user
+
+
+def get_current_user(
+    db: DbSession,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> User:
+    user = user_from_access_token(db, credentials.credentials if credentials else None)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
 
 
@@ -61,5 +68,6 @@ def require_roles(*allowed: Role) -> Callable[[User], User]:
 
 
 TouristUser = Annotated[User, Depends(require_roles(Role.TOURIST))]
+StaffUser = Annotated[User, Depends(require_roles(*STAFF_ROLES))]
 AuditReader = Annotated[User, Depends(require_roles(Role.SUPERVISOR, Role.ADMINISTRATOR))]
 AdminUser = Annotated[User, Depends(require_roles(Role.ADMINISTRATOR))]

@@ -8,6 +8,7 @@
 
 import os
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ from sqlalchemy import Engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import engine, get_db
 from app.core.rate_limit import login_limiter
 from app.main import app
@@ -62,13 +64,25 @@ def db(migrated_engine: Engine) -> Iterator[Session]:
         connection.close()
 
 
-@pytest.fixture
-def client(db: Session) -> Iterator[TestClient]:
+@contextmanager
+def app_client(db: Session) -> Iterator[TestClient]:
+    """A test client whose requests all use the test's (rolled-back) database session.
+    Using it as a context manager also runs the app's startup/shutdown (the event bus)."""
     app.dependency_overrides[get_db] = lambda: db
     login_limiter.reset()
-    with TestClient(app) as test_client:
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client(db: Session, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+    # In-process events, so tests do not depend on Redis (test_dashboard.py checks Redis).
+    monkeypatch.setattr(settings, "event_backend", "memory")
+    with app_client(db) as test_client:
         yield test_client
-    app.dependency_overrides.clear()
 
 
 def make_user(db: Session, role: Role, name: str | None = None) -> User:

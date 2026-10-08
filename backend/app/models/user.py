@@ -16,6 +16,10 @@ class Role(enum.StrEnum):
     ADMINISTRATOR = "administrator"
 
 
+# Everyone who works on the authority side (sees all incidents, uses the dashboard).
+STAFF_ROLES = frozenset({Role.OPERATOR, Role.SUPERVISOR, Role.ADMINISTRATOR})
+
+
 class User(Base):
     __tablename__ = "users"
 

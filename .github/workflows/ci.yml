@@ -29,6 +29,7 @@ jobs:
       POSTGRES_PASSWORD: ci-only-password
       JWT_SECRET: ci-only-jwt-secret-not-used-anywhere-real-0123456789
       REQUIRE_DB: "1"
+      REQUIRE_REDIS: "1"
     defaults:
       run:
         working-directory: backend

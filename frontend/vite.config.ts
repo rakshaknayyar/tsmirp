@@ -14,6 +14,7 @@ export default defineConfig({
       "/api": {
         target: apiTarget,
         changeOrigin: true,
+        ws: true, // also forward WebSocket connections (/api/ws/dashboard)
         rewrite: (path) => path.replace(/^\/api/, ""),
       },
     },
