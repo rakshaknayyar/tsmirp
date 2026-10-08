@@ -5,7 +5,22 @@ B.Tech final-year prototype for Smart India Hackathon problem statement **SIH250
 > **Decision support only.** TSMIRP is not a replacement for police or emergency services.
 > In a real emergency, call **112**.
 
-## Current status: Phase 7 (risk model, predictions, level-based alerts)
+## Current status: Phase 8 (Hindi / romanised Hindi, safety assistant)
+- Language detection (English, Hindi in Devanagari, romanised Hindi) with simple, testable
+  rules (`backend/app/ml/language.py`)
+- "Translate, then classify": Hindi is translated to English by a hand-written word list
+  behind a `Translator` interface (`backend/app/ml/translator.py`), then the English text model
+  and the English severity rules are used. `/incident/classify` shows the English text the
+  model read and the words it did not know
+- Evaluation, romanised Hindi reported separately: `python -m ml.evaluate_multilingual`
+  (report: `ml/reports/multilingual.md`, **synthetic data - not real-world accuracy**; the
+  word list was written from the same templates, so the template scores are optimistic)
+- `POST /assistant/query`: answers from a fixed, hand-written list of safety topics (keyword
+  matching, Hindi translated first). No AI text generation; the only phone numbers are 112 and
+  1363 (a test enforces this). Questions are not stored
+- Tourist app: "Safety assistant" panel; report confirmation shows the detected language
+
+## Phase 7 (risk model, predictions, level-based alerts)
 - One year of **synthetic** tourist incidents for Jaipur (`ml/incident_data.py`; hotspots,
   time of day, weekend, season, rain; three hotspots hidden from the model on purpose) and
   real daily weather from the Open-Meteo archive (approximate fallback table if offline)
@@ -121,6 +136,7 @@ B.Tech final-year prototype for Smart India Hackathon problem statement **SIH250
 | POST | /incident/classify | any logged-in user (rate-limited; 503 if no model trained) |
 | PATCH | /incidents/{id} | operator, supervisor, administrator (override category / severity) |
 | POST | /risk/predict | operator, supervisor, administrator (503 if no model trained) |
+| POST | /assistant/query | any logged-in user |
 | POST | /sos/{id}/cancel | tourist (own SOS only) |
 | GET | /nearby-resources?lat=&lon=&type=&k= | any logged-in user |
 | GET | /incidents/{id}/recommended-resources | operator, supervisor, administrator |
@@ -146,7 +162,7 @@ Requirements: PostgreSQL 16 with PostGIS, Python 3.11+, Node 22. Redis is option
    python -m app.cli create-admin --email you@example.org --name "Your Name"
    python -m app.cli import-osm --area jaipur
    python -m app.cli seed-zones
-   cd .. && python -m ml.train_text_classifier && python -m ml.train_risk_model && cd backend
+   cd .. && python -m ml.train_text_classifier && python -m ml.evaluate_multilingual && python -m ml.train_risk_model && cd backend
    python -m app.cli predict-risk
    uvicorn app.main:app --reload
    ```

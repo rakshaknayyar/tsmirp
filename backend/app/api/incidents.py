@@ -87,6 +87,7 @@ def report_incident(body: IncidentCreate, user: TouristUser, db: DbSession) -> I
         target_id=incident.id,
         details={
             "with_location": body.location is not None,
+            "language": incident.language,
             "classified_automatically": created.classified_automatically,
             "model_version": created.model_version,
             "severity_reasons": created.severity.reasons,

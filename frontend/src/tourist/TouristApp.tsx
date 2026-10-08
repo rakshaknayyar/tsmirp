@@ -1,5 +1,6 @@
 // Tourist app: log in, SOS, location consent + sharing with geofence alerts, map with risk
-// zones and nearby help, incident reports, my incidents and my notifications.
+// zones and nearby help, incident reports (English, Hindi or romanised Hindi), the safety
+// assistant, my incidents and my notifications.
 // Status changes of my own incidents arrive live over /ws/tourist.
 
 import { useCallback, useEffect, useState } from "react";
@@ -18,9 +19,17 @@ import type {
   Profile,
   Session,
 } from "../shared/types";
+import AssistantPanel from "./AssistantPanel";
 import LocationPanel from "./LocationPanel";
 import SosPanel from "./SosPanel";
 import TouristMap from "./TouristMap";
+
+// Language codes returned by the API (detected from the report text).
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: "English",
+  hi: "Hindi, translated with a simple word list",
+  "hi-Latn": "romanised Hindi, translated with a simple word list",
+};
 
 export default function TouristApp() {
   const [session, setSession] = useState<Session | null>(null);
@@ -131,8 +140,9 @@ function TouristHome({ session, onLogout }: { session: Session; onLogout: () => 
           ? ` Automatically classified as ${created.category.name} ` +
             `(confidence ${Math.round(created.confidence * 100)}%).`
           : "";
+      const language = LANGUAGE_NAMES[created.language] ?? created.language;
       setMessage(
-        `Report sent.${how} Severity: ${created.severity}. ` +
+        `Report sent (language: ${language}).${how} Severity: ${created.severity}. ` +
           "An operator will see it on the dashboard and can correct it.",
       );
       loadLists();
@@ -172,7 +182,7 @@ function TouristHome({ session, onLogout }: { session: Session; onLogout: () => 
           ))}
         </select>
         <textarea
-          placeholder="What happened? (at least 5 characters)"
+          placeholder="What happened? English, Hindi or romanised Hindi (at least 5 characters)"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           minLength={5}
@@ -193,6 +203,8 @@ function TouristHome({ session, onLogout }: { session: Session; onLogout: () => 
         <button type="submit">Send report</button>
       </form>
       {message && <p role="status">{message}</p>}
+
+      <AssistantPanel token={token} />
 
       <h2>My incidents</h2>
       {incidents.length === 0 ? (

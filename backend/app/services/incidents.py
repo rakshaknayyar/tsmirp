@@ -7,6 +7,8 @@ Status lifecycle (the only allowed moves):
                  |             |                     |
                  +-> RESOLVED  +-> RESOLVED          +-> ACKNOWLEDGED (re-open)
 
+Language: the one the client gives, or detected from the text; Hindi and romanised Hindi
+are translated to English (app/services/language.py) before classification and severity rules.
 Category: the tourist's own choice if given; otherwise the text classifier's suggestion
 (with its confidence); if no model is available, unknown (flagged for review).
 Severity: rule-based (app/services/severity.py). Operators can override both.
@@ -33,6 +35,7 @@ from app.models.user import User
 from app.schemas.incident import CategoryOut, IncidentCreate, IncidentOut, LocationOut
 from app.services.classification import classify_text
 from app.services.geofence import zones_containing
+from app.services.language import prepare_text
 from app.services.risk import effective_levels
 from app.services.severity import SeverityAssessment, assess_severity
 
@@ -99,11 +102,12 @@ def create_incident(db: Session, reporter: User, body: IncidentCreate) -> Create
     category: IncidentCategory | None = None
     confidence: float | None = None
     model_version: str | None = None
+    prepared = prepare_text(body.description, body.language)
     if body.category_code is not None:
         category = category_by_code(db, body.category_code)  # chosen by the tourist
     else:
         try:
-            result = classify_text(db, body.description, body.language)
+            result = classify_text(db, prepared)
             category, confidence, model_version = (
                 result.category,
                 result.confidence,
@@ -116,13 +120,13 @@ def create_incident(db: Session, reporter: User, body: IncidentCreate) -> Create
         db, body.location.lat, body.location.lon
     )
     severity = assess_severity(
-        body.description, category.code if category else None, in_high_risk_zone=high_zone
+        prepared.text_for_rules, category.code if category else None, in_high_risk_zone=high_zone
     )
     incident = Incident(
         reporter_user_id=reporter.id,
         category_id=category.id if category else None,
         description=body.description,
-        language=body.language,
+        language=prepared.language,
         severity=severity.severity,
         status=IncidentStatus.NEW,
         is_sos=False,

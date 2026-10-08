@@ -45,5 +45,16 @@ python -m ml.train_risk_model
 5. artefacts under `ml/artefacts/risk_model/<version>/` (git-ignored, `LATEST` points to the
    version) and the report `ml/reports/risk_model.md` (committed).
 
-## Still to come
-- Phase 8: Hindi / romanised Hindi via a translation step, evaluated separately.
+## Hindi and romanised Hindi (Phase 8)
+
+Run from the repository root after training the text model:
+
+```
+python -m ml.evaluate_multilingual
+```
+
+It measures language detection, and category accuracy for Hindi and romanised Hindi
+**separately**, with and without the word-list translation, plus a small hand-written check set
+of romanised Hindi with new wording. Report: `ml/reports/multilingual.md` (committed).
+The word list (`backend/app/ml/hindi_glossary.py`) was written from the same templates, so
+the template scores are an optimistic upper bound.

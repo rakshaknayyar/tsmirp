@@ -1,17 +1,15 @@
 """Text model (generator, training, reproducibility) and the classification features of the API.
 
-A small model is trained once per test run from the seeded generator, into a temporary folder,
-so these tests never depend on a model trained earlier on this machine.
+The model is trained once per test run (fixtures `trained_text_model` / `text_model` in
+conftest.py), so these tests never depend on a model trained earlier on this machine.
 """
 
 import sys
 
-import pytest
 from sqlalchemy import select
 
-from app.core.config import REPO_ROOT, settings
+from app.core.config import REPO_ROOT
 from app.core.rate_limit import classify_limiter
-from app.ml import text_classifier
 from app.models.audit import AuditLog
 from app.models.user import Role
 from tests.conftest import auth_headers
@@ -21,22 +19,6 @@ from ml.text_data import CATEGORIES, LANGUAGES, generate_texts  # noqa: E402
 from ml.train_text_classifier import split_by_template, train  # noqa: E402
 
 BRIEF_EXAMPLE = "My phone was stolen near the market"
-
-
-@pytest.fixture(scope="session")
-def trained(tmp_path_factory):
-    root = tmp_path_factory.mktemp("text_model")
-    result = train(root / "artefacts", root / "texts.csv", report_path=None)
-    return root / "artefacts", result
-
-
-@pytest.fixture
-def text_model(trained, monkeypatch):
-    artefacts, _ = trained
-    monkeypatch.setattr(settings, "text_model_dir", artefacts)
-    text_classifier.reset_cache()
-    yield
-    text_classifier.reset_cache()
 
 
 # ---------- synthetic data ----------
@@ -72,8 +54,8 @@ def test_train_and_test_never_share_a_template():
 # ---------- training ----------
 
 
-def test_training_writes_versioned_artefacts(trained):
-    artefacts, result = trained
+def test_training_writes_versioned_artefacts(trained_text_model):
+    artefacts, result = trained_text_model
     version = (artefacts / "LATEST").read_text()
 
     assert version == result["version"]
@@ -82,8 +64,8 @@ def test_training_writes_versioned_artefacts(trained):
     assert result["metrics"]["macro_f1"] > result["metrics"]["baseline_most_frequent"]["macro_f1"]
 
 
-def test_training_is_reproducible(trained, tmp_path):
-    _, first = trained
+def test_training_is_reproducible(trained_text_model, tmp_path):
+    _, first = trained_text_model
 
     second = train(tmp_path / "artefacts", tmp_path / "texts.csv", report_path=None)
 
@@ -115,17 +97,14 @@ def test_meaningless_text_is_flagged_for_review(client, users, text_model):
     assert body["needs_review"] is True
 
 
-def test_unsupported_language_is_flagged_for_review(client, users, text_model):
+def test_english_text_is_not_translated(client, users, text_model):
     headers = auth_headers(client, users[Role.TOURIST])
 
-    body = client.post(
-        "/incident/classify",
-        headers=headers,
-        json={"text": "Mera phone chori ho gaya hai", "language": "hi-Latn"},
-    ).json()
+    body = client.post("/incident/classify", headers=headers, json={"text": BRIEF_EXAMPLE}).json()
 
-    assert body["needs_review"] is True
-    assert "not supported yet" in body["note"]
+    assert (body["language"], body["language_detected"]) == ("en", True)
+    assert body["english_text"] == BRIEF_EXAMPLE
+    assert body["translation_method"] is None
 
 
 def test_classify_without_model_is_503(client, users):

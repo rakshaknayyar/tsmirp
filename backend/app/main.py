@@ -10,6 +10,7 @@ from fastapi import FastAPI
 
 from app.api import (
     admin,
+    assistant,
     auth,
     classify,
     health,
@@ -51,3 +52,4 @@ app.include_router(risk.router)
 app.include_router(sos.router)
 app.include_router(ws.router)
 app.include_router(admin.router)
+app.include_router(assistant.router)

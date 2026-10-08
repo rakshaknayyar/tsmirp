@@ -4,9 +4,12 @@
 - Each test runs inside one database transaction that is ROLLED BACK afterwards, so tests
   never leave data behind and cannot affect each other.
 - If PostgreSQL is not reachable, database tests are skipped (or fail in CI, REQUIRE_DB=1).
+- `text_model` gives a test the text classifier, trained once per run into a temporary folder
+  from the seeded generator (never a model trained earlier on this machine).
 """
 
 import os
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -19,7 +22,7 @@ from sqlalchemy import Engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
+from app.core.config import REPO_ROOT, settings
 from app.core.database import engine, get_db
 from app.core.rate_limit import classify_limiter, login_limiter, sos_limiter
 from app.main import app
@@ -119,3 +122,22 @@ def auth_headers(client: TestClient, user: User) -> dict[str, str]:
 def users(db: Session) -> dict[Role, User]:
     """One user of every role."""
     return {role: make_user(db, role) for role in Role}
+
+
+@pytest.fixture(scope="session")
+def trained_text_model(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, dict]:
+    sys.path.insert(0, str(REPO_ROOT))  # so the ml/ folder can be imported
+    from ml.train_text_classifier import train
+
+    root = tmp_path_factory.mktemp("text_model")
+    result = train(root / "artefacts", root / "texts.csv", report_path=None)
+    return root / "artefacts", result
+
+
+@pytest.fixture
+def text_model(trained_text_model, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    artefacts, _ = trained_text_model
+    monkeypatch.setattr(settings, "text_model_dir", artefacts)
+    text_classifier.reset_cache()
+    yield
+    text_classifier.reset_cache()

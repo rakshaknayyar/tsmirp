@@ -46,8 +46,17 @@ falls back), events are delivered inside the single API process.
   duplicate; "I'm safe" may resolve the SOS from any open status (special path outside the
   operator lifecycle).
 - Text classification: TF-IDF + logistic regression, sigmoid-calibrated, trained on synthetic
-  English text only (Phase 8 adds translation). Review threshold 0.5 (initial assumption).
+  English text only. Review threshold 0.5 (initial assumption).
   If no model is trained, new reports stay uncategorised and are flagged for review.
+- Languages: detected by rules (Devanagari letters -> "hi"; 2+ typical romanised Hindi words
+  making up a quarter of the words -> "hi-Latn"; else "en") unless the client gives one.
+  Hindi is translated word by word with a hand-written list (app/ml/hindi_glossary.py) behind
+  the Translator interface, then classified; severity rules read the original + the English.
+  If the translation contains no English words, confidence is set to 0 (always reviewed).
+  incidents.language stores the detected language.
+- Assistant: fixed knowledge base (app/services/assistant_kb.py), keyword scoring, ties go to
+  the topic listed first (most urgent first). Only 112 and 1363 appear as phone numbers.
+  Answers are in English. Questions are not stored.
 - Severity defaults per category (assumption): suspicious activity / other LOW; theft,
   accident, lost person, unknown MEDIUM; harassment, medical emergency, natural disaster HIGH;
   fire CRITICAL. The brief's keyword rules raise it from there (see app/services/severity.py).

@@ -1,9 +1,12 @@
 """Incident classification: the trained text model suggests one of the 9 categories.
 
+- The model was trained on SYNTHETIC English text only. Hindi and romanised Hindi are first
+  translated to English (app/services/language.py), then classified ("translate, then
+  classify").
 - The suggestion comes with a calibrated confidence; below settings.classify_review_threshold
   it is flagged for human review.
-- The model was trained on SYNTHETIC English text only. Other languages are always flagged
-  for review until the translation step (Phase 8).
+- If the translation contains no English words at all, the model has nothing real to go on,
+  so the confidence is set to 0 and the report always goes to human review.
 - SOS skips classification entirely (see app/services/sos.py).
 """
 
@@ -15,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.ml.text_classifier import get_classifier
 from app.models.incident import IncidentCategory
+from app.services.language import PreparedText
 
 
 @dataclass
@@ -24,25 +28,19 @@ class ClassificationResult:
     needs_review: bool
     alternatives: list[tuple[str, float]]
     model_version: str
-    language_supported: bool
 
 
-def classify_text(db: Session, text: str, language: str = "en") -> ClassificationResult:
+def classify_text(db: Session, prepared: PreparedText) -> ClassificationResult:
     """Raises app.ml.text_classifier.ModelUnavailable if no model has been trained."""
-    classifier = get_classifier()
-    prediction = classifier.predict(text)
+    prediction = get_classifier().predict(prepared.english)
     category = db.scalar(
         select(IncidentCategory).where(IncidentCategory.code == prediction.category_code)
     )
-    language_supported = language in classifier.languages
-    needs_review = (
-        prediction.confidence < settings.classify_review_threshold or not language_supported
-    )
+    confidence = 0.0 if prepared.understood_nothing else prediction.confidence
     return ClassificationResult(
         category=category,
-        confidence=prediction.confidence,
-        needs_review=needs_review,
+        confidence=confidence,
+        needs_review=confidence < settings.classify_review_threshold,
         alternatives=prediction.alternatives,
         model_version=prediction.model_version,
-        language_supported=language_supported,
     )

@@ -1,6 +1,7 @@
 """Request and response shapes for incidents."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -35,7 +36,8 @@ class IncidentCreate(BaseModel):
 
     description: str = Field(min_length=5, max_length=2000)
     category_code: str | None = Field(default=None, max_length=30)
-    language: str = Field(default="en", min_length=2, max_length=10)
+    # "en", "hi" (Devanagari) or "hi-Latn" (romanised Hindi); leave empty to detect it.
+    language: Literal["en", "hi", "hi-Latn"] | None = None
     location: LocationIn | None = None
 
 
