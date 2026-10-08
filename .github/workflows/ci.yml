@@ -27,6 +27,7 @@ jobs:
     env:
       POSTGRES_HOST: localhost
       POSTGRES_PASSWORD: ci-only-password
+      JWT_SECRET: ci-only-jwt-secret-not-used-anywhere-real-0123456789
       REQUIRE_DB: "1"
     defaults:
       run:

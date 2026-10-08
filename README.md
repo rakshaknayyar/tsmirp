@@ -5,26 +5,47 @@ B.Tech final-year prototype for Smart India Hackathon problem statement **SIH250
 > **Decision support only.** TSMIRP is not a replacement for police or emergency services.
 > In a real emergency, call **112**.
 
-## Current status: Phase 0 (scaffold)
+## Current status: Phase 1 (auth, roles, consent, audit log)
 - FastAPI backend with `GET /health` (checks API, PostgreSQL + PostGIS, Redis)
-- Alembic baseline migration (enables PostGIS)
+- Accounts with Argon2id password hashing and JWT access (15 min) + refresh (7 days) tokens
+- Roles: tourist, operator, supervisor, administrator. Public sign-up creates tourists only;
+  staff are created by an administrator
+- Tourist profile with revocable location consent (off by default) and emergency contacts
+- Hash-chained audit log of sensitive actions, with a verification endpoint
+- Login rate limit (5 attempts per minute per IP + e-mail, in-memory)
 - React + TypeScript frontend placeholder showing system health
 - Docker Compose, GitHub Actions CI, ruff + pre-commit
+
+### Endpoints so far
+| Method | Path | Who |
+|---|---|---|
+| GET | /health | anyone |
+| POST | /auth/register, /auth/login, /auth/refresh | anyone |
+| GET | /auth/me | any logged-in user |
+| GET, PUT | /tourist/profile | tourist (own profile only) |
+| PUT | /tourist/consent | tourist |
+| GET, POST | /tourist/emergency-contacts | tourist (own contacts only) |
+| DELETE | /tourist/emergency-contacts/{id} | tourist (own contacts only) |
+| POST | /admin/users | administrator |
+| GET | /audit-logs, /audit-logs/verify | supervisor, administrator |
 
 ## Run locally on Windows (no Docker)
 
 Requirements: PostgreSQL 16 with PostGIS, Python 3.11+, Node 22. Redis is optional until Phase 2.
 
 1. Create a database named `tsmirp` (for example in pgAdmin).
-2. Copy `.env.example` to `.env` and put your PostgreSQL password in it.
+2. Copy `.env.example` to `.env`, put your PostgreSQL password in it, and set `JWT_SECRET`
+   to a long random value (the command to generate one is in the file).
 3. Backend (from the `backend` folder):
    ```
    python -m venv .venv
    .venv\Scripts\activate
    pip install -e ".[dev]"
    alembic upgrade head
+   python -m app.cli create-admin --email you@example.org --name "Your Name"
    uvicorn app.main:app --reload
    ```
+   `create-admin` asks for the password without showing it. Run it once.
    Open http://localhost:8000/health and http://localhost:8000/docs
 4. Tests (from `backend`, with the venv active): `pytest -v`
 5. Frontend (from the `frontend` folder):

@@ -5,7 +5,7 @@ Run locally with:  uvicorn app.main:app --reload   (from the backend folder)
 
 from fastapi import FastAPI
 
-from app.api import health
+from app.api import admin, auth, health, tourist
 
 app = FastAPI(
     title="TSMIRP API",
@@ -18,3 +18,6 @@ app = FastAPI(
 )
 
 app.include_router(health.router)
+app.include_router(auth.router)
+app.include_router(tourist.router)
+app.include_router(admin.router)

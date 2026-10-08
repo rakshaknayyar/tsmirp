@@ -1,11 +1,12 @@
 """Application settings.
 
 All configuration comes from environment variables (or the .env file in the repository
-root), so no passwords are written in the code.
+root), so no passwords or secrets are written in the code.
 """
 
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
@@ -27,6 +28,16 @@ class Settings(BaseSettings):
     postgres_db: str = "tsmirp"
 
     redis_url: str = "redis://localhost:6379/0"
+
+    # No default on purpose: the API refuses to start without a real secret.
+    jwt_secret: str = Field(min_length=32)
+    jwt_algorithm: str = "HS256"
+    access_token_minutes: int = 15
+    refresh_token_days: int = 7
+
+    # Login rate limit: at most this many attempts per window, per IP address + e-mail.
+    login_rate_limit: int = 5
+    login_rate_window_seconds: int = 60
 
     @property
     def database_url(self) -> URL:

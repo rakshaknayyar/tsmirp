@@ -9,7 +9,7 @@ from logging.config import fileConfig
 from alembic import context
 
 from app.core.database import engine
-from app.models.base import Base
+from app.models import Base  # importing app.models loads every table definition
 
 config = context.config
 if config.config_file_name is not None:
