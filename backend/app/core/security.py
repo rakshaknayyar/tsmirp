@@ -3,6 +3,8 @@
 - Passwords are never stored, only an Argon2id hash (slow on purpose, salted automatically).
 - An access token (short-lived) is sent with every request.
 - A refresh token (long-lived) is only used to get a new access token.
+- A tourist credential (Phase 9) is a signed, time-limited digital tourist ID shown as a QR
+  code; it cannot be used to log in.
   Each token carries a "type" claim so one kind cannot be used in place of the other.
 """
 
@@ -16,6 +18,7 @@ from app.core.config import settings
 
 ACCESS = "access"
 REFRESH = "refresh"
+CREDENTIAL = "tourist_credential"
 
 _hasher = PasswordHasher()  # argon2-cffi uses the Argon2id variant by default
 
@@ -40,9 +43,12 @@ class TokenError(Exception):
     """The token is missing, expired, tampered with, or of the wrong type."""
 
 
-def _create_token(user_id: int, token_type: str, lifetime: timedelta) -> str:
+def _create_token(
+    user_id: int, token_type: str, lifetime: timedelta, extra: dict | None = None
+) -> str:
     now = datetime.now(UTC)
     payload = {"sub": str(user_id), "type": token_type, "iat": now, "exp": now + lifetime}
+    payload.update(extra or {})
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
@@ -52,6 +58,12 @@ def create_access_token(user_id: int) -> str:
 
 def create_refresh_token(user_id: int) -> str:
     return _create_token(user_id, REFRESH, timedelta(days=settings.refresh_token_days))
+
+
+def create_credential_token(user_id: int, claims: dict) -> str:
+    """The digital tourist ID: who the tourist is, signed, valid for credential_days."""
+    lifetime = timedelta(days=settings.credential_days)
+    return _create_token(user_id, CREDENTIAL, lifetime, claims)
 
 
 def decode_token(token: str, expected_type: str) -> dict:

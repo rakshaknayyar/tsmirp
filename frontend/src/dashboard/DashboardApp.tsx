@@ -1,5 +1,6 @@
-// Authority dashboard: map, live geofence alerts, live incident list, status buttons, and
-// operator overrides of the automatic category / severity (every override is audited).
+// Authority dashboard: map, live geofence alerts, live incident list, status buttons,
+// operator overrides of the automatic category / severity (every override is audited),
+// analytics (plain counts) and a checker for digital tourist IDs.
 // New incidents, status changes and geofence alerts arrive over the WebSocket without
 // refreshing the page.
 
@@ -11,6 +12,8 @@ import LoginForm from "../shared/LoginForm";
 import SimulationNotice from "../shared/SimulationNotice";
 import { SEVERITIES, STAFF_ROLES } from "../shared/types";
 import type { Category, Incident, IncidentStatus, Session } from "../shared/types";
+import AnalyticsPanel from "./AnalyticsPanel";
+import CredentialCheck from "./CredentialCheck";
 import DashboardMap from "./DashboardMap";
 import ResourcePicker from "./ResourcePicker";
 
@@ -64,6 +67,13 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
   const [categories, setCategories] = useState<Category[]>([]);
   const [zonesVersion, setZonesVersion] = useState(0);
   const [riskMessage, setRiskMessage] = useState<string | null>(null);
+  const [changes, setChanges] = useState(0); // counts incident updates, to refresh analytics
+
+  // Put a new or changed incident into the list, and let the analytics count again.
+  const applyUpdate = useCallback((incident: Incident) => {
+    setIncidents((list) => upsert(list, incident));
+    setChanges((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     apiGet<Incident[]>("/incidents", session.token)
@@ -83,12 +93,12 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
           if (event.type === "geofence.alert") {
             setAlerts((list) => [event as GeofenceAlert, ...list].slice(0, 10));
           } else if ("incident" in event) {
-            setIncidents((list) => upsert(list, event.incident as Incident));
+            applyUpdate(event.incident as Incident);
           }
         },
         (status) => setLiveMode(status.mode),
       ),
-    [session.token],
+    [session.token, applyUpdate],
   );
 
   const changeStatus = useCallback(
@@ -99,12 +109,12 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
           token: session.token,
           body: { status },
         });
-        setIncidents((list) => upsert(list, updated));
+        applyUpdate(updated);
       } catch (err) {
         setError((err as Error).message);
       }
     },
-    [session.token],
+    [session.token, applyUpdate],
   );
 
   // Operator override of category and/or severity (PATCH /incidents/{id}).
@@ -116,12 +126,12 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
           token: session.token,
           body: change,
         });
-        setIncidents((list) => upsert(list, updated));
+        applyUpdate(updated);
       } catch (err) {
         setError((err as Error).message);
       }
     },
-    [session.token],
+    [session.token, applyUpdate],
   );
 
   // Run the risk model for today (POST /risk/predict) and redraw the map.
@@ -262,7 +272,7 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
                         incident={incident}
                         token={session.token}
                         onAssigned={(updated) => {
-                          setIncidents((list) => upsert(list, updated));
+                          applyUpdate(updated);
                           setPickerFor(null);
                         }}
                         onClose={() => setPickerFor(null)}
@@ -276,6 +286,11 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
         </table>
       </div>
       {incidents.length === 0 && <p>No incidents yet.</p>}
+
+      {/* Counts again whenever an incident is added or changes. */}
+      <AnalyticsPanel token={session.token} refreshKey={changes} />
+
+      <CredentialCheck token={session.token} />
     </>
   );
 }

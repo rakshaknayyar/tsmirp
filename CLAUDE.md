@@ -34,8 +34,8 @@ prototype for Smart India Hackathon problem statement **SIH25002**. It is a
   (GeoAlchemy2), Redis (pub/sub), WebSockets
 - ML/NLP: scikit-learn (logistic regression baseline, random forest primary; XGBoost only if it
   clearly beats RF), TF-IDF + logistic regression for text; translation behind an interface
-- Frontend: React + TypeScript (Vite), Leaflet + OpenStreetMap tiles, PWA. Tourist app and
-  authority dashboard
+- Frontend: React + TypeScript (Vite), Leaflet + OpenStreetMap tiles (PWA dropped to keep the
+  scope small). Tourist app and authority dashboard
 - Auth: JWT access + refresh tokens, Argon2id or bcrypt; roles: tourist, operator, supervisor,
   administrator
 - Infra: Docker Compose (api, postgres/postgis, redis, web), pytest, ruff, pre-commit, GitHub
@@ -99,4 +99,5 @@ POST /assistant/query, GET /analytics/summary, WS /ws/dashboard.
 6. Synthetic data; text classifier + severity rules; classification endpoint.
 7. Risk model training, evaluation report, /risk/predict, level-based alerts.
 8. Multilingual step and assistant.
-9. Analytics, privacy controls, OWASP API Top 10 tests, load test, final README.
+9. Analytics, privacy controls, OWASP API Top 10 tests, final README (load test dropped to keep
+   the scope small; stated in the README).

@@ -10,9 +10,11 @@ from fastapi import FastAPI
 
 from app.api import (
     admin,
+    analytics,
     assistant,
     auth,
     classify,
+    credential,
     health,
     incidents,
     resources,
@@ -53,3 +55,5 @@ app.include_router(sos.router)
 app.include_router(ws.router)
 app.include_router(admin.router)
 app.include_router(assistant.router)
+app.include_router(credential.router)
+app.include_router(analytics.router)

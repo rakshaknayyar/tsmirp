@@ -3,152 +3,163 @@
 B.Tech final-year prototype for Smart India Hackathon problem statement **SIH25002**.
 
 > **Decision support only.** TSMIRP is not a replacement for police or emergency services.
-> In a real emergency, call **112**.
+> In a real emergency, call **112**. Tourist helpline: **1363**.
 
-## Current status: Phase 8 (Hindi / romanised Hindi, safety assistant)
-- Language detection (English, Hindi in Devanagari, romanised Hindi) with simple, testable
-  rules (`backend/app/ml/language.py`)
-- "Translate, then classify": Hindi is translated to English by a hand-written word list
-  behind a `Translator` interface (`backend/app/ml/translator.py`), then the English text model
-  and the English severity rules are used. `/incident/classify` shows the English text the
-  model read and the words it did not know
-- Evaluation, romanised Hindi reported separately: `python -m ml.evaluate_multilingual`
-  (report: `ml/reports/multilingual.md`, **synthetic data - not real-world accuracy**; the
-  word list was written from the same templates, so the template scores are optimistic)
-- `POST /assistant/query`: answers from a fixed, hand-written list of safety topics (keyword
-  matching, Hindi translated first). No AI text generation; the only phone numbers are 112 and
-  1363 (a test enforces this). Questions are not stored
-- Tourist app: "Safety assistant" panel; report confirmation shows the detected language
+All nine phases (0-9) are complete. The demo area is Jaipur.
 
-## Phase 7 (risk model, predictions, level-based alerts)
-- One year of **synthetic** tourist incidents for Jaipur (`ml/incident_data.py`; hotspots,
-  time of day, weekend, season, rain; three hotspots hidden from the model on purpose) and
-  real daily weather from the Open-Meteo archive (approximate fallback table if offline)
-- Risk model per ~1 km grid cell x 6-hour bin: `python -m ml.train_risk_model` (report:
-  `ml/reports/risk_model.md`). Chronological train/validation/test split, blocked spatial CV
-  (logistic regression vs random forest), isotonic calibration, full metric set, compared with
-  a "cell's historical rate" baseline. **Synthetic data - not real-world accuracy**
-- `POST /risk/predict` (staff) or `python -m app.cli predict-risk` stores predictions with the
-  model version; levels LOW < 0.25 <= MODERATE < 0.50 <= HIGH < 0.75 <= CRITICAL (initial,
-  configurable)
-- Geofence alerts, the "inside a high-risk zone" severity rule and the maps use each zone's
-  level for the current 6-hour period (model level for grid cells)
+## Architecture
 
-## Phase 6 (text classifier, severity rules, classification)
-- Synthetic incident texts (English, Hindi, romanised Hindi; seeded templates) and a
-  TF-IDF + logistic regression classifier: `python -m ml.train_text_classifier`
-  (report: `ml/reports/text_classifier.md`, **synthetic data - not real-world accuracy**)
-- `POST /incident/classify`: category + calibrated confidence + department + severity with
-  reasons; low confidence (< 0.5, initial assumption) or an unsupported language is flagged
-  for human review. Rate-limited
-- New reports without a category are classified automatically; severity always comes from
-  explainable rules (`app/services/severity.py`), e.g. "My phone was stolen near the market"
-  => Theft / HIGH / Police
-- Operators can override category and severity on the dashboard (`PATCH /incidents/{id}`);
-  every override is audited
+```mermaid
+flowchart LR
+    subgraph Browser["Browser (React + TypeScript, Vite)"]
+        T["Tourist app<br/>#/tourist"]
+        D["Authority dashboard<br/>#/dashboard"]
+    end
+    subgraph API["FastAPI backend"]
+        R["Routes (app/api)<br/>JWT auth + roles"]
+        S["Services (app/services)<br/>geofence, SOS, severity,<br/>classification, assistant,<br/>credential, analytics, audit"]
+        M["Trained models (app/ml)<br/>text classifier, risk model,<br/>language detection, translator"]
+        N["Sandbox notifier<br/>(SMS / e-mail SIMULATED)"]
+    end
+    DB[("PostgreSQL 16 + PostGIS<br/>12 tables, EPSG:4326, GiST")]
+    RD[("Redis pub/sub<br/>(optional)")]
+    ML["ml/ scripts<br/>synthetic data, training,<br/>evaluation reports"]
+    OSM["OpenStreetMap<br/>(Overpass import, map tiles)"]
+    OM["Open-Meteo archive<br/>(weather for training)"]
 
-## Phase 5 (SOS, simulated dispatch, sandbox notifications)
-- SOS button with a 5-second cancel window in the app; `POST /sos` creates a CRITICAL
-  incident (`is_sos`, no category - SOS skips classification). An open SOS is returned
-  instead of creating a duplicate. Rate-limited (3 per 10 min per account; the error says
-  "call 112")
-- Pressing SOS shares the location for that emergency even without general consent; it is
-  deleted again when the SOS ends if consent is off
-- **Sandbox only**: emergency contacts get a simulated SMS, the tourist a simulated e-mail
-  (stored in `notifications`, logged with masked numbers, never sent anywhere)
-- Dashboard: red active-SOS banner; acknowledge -> recommend -> assign (simulated dispatch)
-- Every status change notifies the tourist in-app and live over `WS /ws/tourist`, which only
-  ever carries events about the tourist's own incidents
-- "I'm safe" (`POST /sos/{id}/cancel`) resolves the SOS, frees resources, tells contacts
-  (sandbox SMS)
+    T -- "HTTPS (REST) + WebSocket /ws/tourist" --> R
+    D -- "HTTPS (REST) + WebSocket /ws/dashboard" --> R
+    R --> S --> M
+    S --> N
+    S --> DB
+    S -- "live events" --> RD
+    ML -- "versioned artefacts" --> M
+    OSM -. "import-osm (CLI)" .-> DB
+    OM -. "train_risk_model" .-> ML
+```
 
-## Phase 4 (risk zones, geofencing, maps)
-- Risk zones (PostGIS polygons, GiST index) with a RELATIVE level LOW / MODERATE / HIGH /
-  CRITICAL. The Jaipur demo zones are **synthetic** (hand-made circles around public places,
-  not crime data): `python -m app.cli seed-zones`
-- `POST /tourist/location` (consent required): ignores fixes worse than 100 m accuracy, stores
-  only the latest position, checks zones with `ST_Contains` (inside) and `ST_DWithin` (nearby)
-- Geofence alerts only for HIGH / CRITICAL zones, after 60 s inside, at most once per entry
-  with a 10-minute cooldown (all configurable assumptions); alerts go to the tourist (in-app),
-  the audit log (no coordinates) and the live dashboard
-- Staff can view a tourist's location only with consent or during an active SOS; every view
-  is audited. Revoking consent deletes the stored location immediately
-- Leaflet maps with OpenStreetMap tiles in both apps; the tourist app has a "demo position"
-  option (simulated GPS at a Jaipur landmark) for testing from anywhere
+More detail and every design assumption: [docs/architecture.md](docs/architecture.md).
+Privacy rules: [docs/privacy.md](docs/privacy.md). Security checks: [docs/security.md](docs/security.md).
 
-## Phase 3 (response resources, nearest-resource ranking)
-- Police stations, hospitals and fire stations for the demo area (Jaipur) imported from
-  OpenStreetMap: `python -m app.cli import-osm --area jaipur`
-- Nearest search with PostGIS KNN (`<->`) on geography; recommendations filtered by the
-  category's department and ranked available -> matching capability -> nearer
-- Tests cross-check PostGIS against a brute-force Haversine calculation
-- `POST /incidents/{id}/assign` is a **simulated** dispatch: the decision is recorded, the
-  resource is marked BUSY (simulated), nothing is sent anywhere
-- All distances are **straight-line** approximations; real road distance is longer
+## Features
 
-### Known data limitations (observed in the Jaipur import, 2026-10-08)
-- The import found 403 "hospitals", 22 police stations and 1 fire station. OpenStreetMap
-  coverage is uneven: fire stations are clearly under-mapped.
-- Some features tagged `amenity=hospital` are clinics or diagnostic centres, and some
-  stations appear twice (e.g. a misspelt duplicate). The data is used as-is, not cleaned.
+**Accounts and privacy**
+- Argon2id password hashing; JWT access (15 min) and refresh (7 days) tokens; roles tourist,
+  operator, supervisor, administrator. Public sign-up creates tourists only.
+- Location only after explicit, revocable consent (off by default). Revoking deletes the
+  stored location at once. Staff see a tourist's location only with consent or during an
+  active SOS, and every view is audited.
+- Stored locations expire after 30 days (configurable); `python -m app.cli purge-expired`
+  deletes expired ones for good (run it daily).
+- Hash-chained audit log of sensitive actions, with a verification endpoint.
 
-## Phase 2 (incidents, status lifecycle, live dashboard)
-- Tourists report incidents (9 categories, each with a suggested department); a location can
-  only be attached when location consent is on
-- Status lifecycle NEW -> ACKNOWLEDGED -> ASSIGNED -> EN_ROUTE -> RESOLVED -> CLOSED, enforced
-  by the API (invalid moves get 409); every change is audited
-- Live authority dashboard over WebSocket (`/ws/dashboard`), via Redis pub/sub when Redis is
-  running, otherwise in-process (fine for a single-machine demo)
-- Severity is a provisional MEDIUM until the severity rules in Phase 6
-- Web pages: `#/tourist` (log in or sign up, report, my incidents) and `#/dashboard`
-  (staff log in, live incident list, status buttons)
+**Incidents and the live dashboard**
+- 9 categories with a suggested department; status lifecycle NEW -> ACKNOWLEDGED -> ASSIGNED ->
+  EN_ROUTE -> RESOLVED -> CLOSED enforced by the API; live updates over WebSockets.
+- Automatic category suggestion (TF-IDF + logistic regression, calibrated confidence; low
+  confidence goes to human review) and explainable severity rules. Operators can override
+  both; every override is audited.
+- Reports in English, Hindi or romanised Hindi: the language is detected and Hindi is
+  translated to English by a simple word list (behind a `Translator` interface) before
+  classification.
 
-### Earlier phases
-- FastAPI backend with `GET /health` (checks API, PostgreSQL + PostGIS, Redis)
-- Accounts with Argon2id password hashing and JWT access (15 min) + refresh (7 days) tokens
-- Roles: tourist, operator, supervisor, administrator. Public sign-up creates tourists only;
-  staff are created by an administrator
-- Tourist profile with revocable location consent (off by default) and emergency contacts
-- Hash-chained audit log of sensitive actions, with a verification endpoint
-- Login rate limit (5 attempts per minute per IP + e-mail, in-memory)
-- React + TypeScript frontend placeholder showing system health
-- Docker Compose, GitHub Actions CI, ruff + pre-commit
+**SOS and response**
+- SOS with a 5-second cancel window -> CRITICAL incident -> live dashboard banner -> sandbox
+  notifications to emergency contacts -> nearest resources -> operator assigns (simulated).
+- Police stations, hospitals and fire stations imported from OpenStreetMap; nearest search with
+  PostGIS KNN, cross-checked against a brute-force Haversine calculation in tests.
 
-### Endpoints so far
+**Risk zones and geofencing**
+- Hand-drawn synthetic demo zones plus ~1 km grid cells whose level comes from the risk model
+  (per 6-hour period). Geofence alerts only for HIGH / CRITICAL, after a dwell time, with a
+  cooldown. Levels are relative decision-support estimates, not crime predictions.
+
+**Assistant, digital ID, analytics**
+- Safety assistant: answers from a fixed, hand-written list of topics; always shows 112 and
+  1363; a test makes sure no other phone number appears.
+- Digital tourist ID: a signed, time-limited credential shown as a QR code (replaces the
+  blockchain ID of the problem statement, which is out of scope). Staff can check it is
+  genuine and not expired.
+- Dashboard analytics: plain counts by status, severity, category, language and day.
+
+## Machine learning (all on SYNTHETIC data)
+
+| Command (from the repository root) | Report |
+|---|---|
+| `python -m ml.train_text_classifier` | [ml/reports/text_classifier.md](ml/reports/text_classifier.md) |
+| `python -m ml.evaluate_multilingual` | [ml/reports/multilingual.md](ml/reports/multilingual.md) |
+| `python -m ml.train_risk_model` | [ml/reports/risk_model.md](ml/reports/risk_model.md) |
+
+Fixed seeds: the same command gives the same model version and the same numbers. The reports
+include baselines, the development history (including runs that did worse than the baseline)
+and known limitations. **These numbers do not show real-world accuracy.** Details:
+[ml/README.md](ml/README.md).
+
+## What is simulated
+
+| Part | What really happens | What does NOT happen |
+|---|---|---|
+| Emergency dispatch ("assign") | The decision is stored and audited; the resource is marked BUSY (simulated) | No police, ambulance or fire service is contacted |
+| SMS to emergency contacts, e-mail to the tourist | A sandbox row in `notifications` and a log line with masked numbers | Nothing is sent to any phone or mailbox (`app/services/notifier.py` has no real provider) |
+| Resource availability (AVAILABLE / BUSY) | Simulated status in the database | Not linked to any real unit |
+| Risk zones (demo) and risk model | Synthetic hotspots and synthetic incidents | No real crime data; never trained on arrests or enforcement data |
+| Incident texts for the classifier | Synthetic template sentences | No real tourist reports |
+| "Demo position" in the tourist app | A fake GPS fix at a Jaipur landmark, for testing anywhere | Not your real location |
+| Digital tourist ID | A signed JWT shown as a QR code; checked by pasting its text | No blockchain, no camera scanning |
+| Real data used | OpenStreetMap places (ODbL), Open-Meteo weather (training only), map tiles | — |
+
+## Not done (out of scope for this prototype)
+- **Load test**: not carried out, so no throughput or response-time figures are claimed.
+- **PWA** (installable offline app): not built; the frontend is a normal web app.
+- Blockchain digital ID: replaced by the signed QR credential (see above).
+- Real translation model: the word list covers the demo vocabulary only.
+- Credential revocation list: a credential stays valid until it expires unless the account is
+  deactivated.
+
+## Endpoints
+All endpoints need a login except `/health` and `/auth/register|login|refresh` (a test checks
+every documented endpoint). Interactive documentation: http://localhost:8000/docs
+
 | Method | Path | Who |
 |---|---|---|
 | GET | /health | anyone |
-| POST | /auth/register, /auth/login, /auth/refresh | anyone |
+| POST | /auth/register, /auth/login, /auth/refresh | anyone (login is rate-limited) |
 | GET | /auth/me | any logged-in user |
 | GET, PUT | /tourist/profile | tourist (own profile only) |
 | PUT | /tourist/consent | tourist |
 | GET, POST | /tourist/emergency-contacts | tourist (own contacts only) |
 | DELETE | /tourist/emergency-contacts/{id} | tourist (own contacts only) |
+| POST | /tourist/location | tourist (consent required) |
+| GET | /tourist/notifications | tourist (own only) |
+| GET | /tourist/credential | tourist (digital ID + QR code) |
+| GET | /tourist/location/{user_id} | staff (consent or active SOS; audited) |
+| POST | /credential/verify | staff (audited) |
 | POST | /admin/users | administrator |
 | GET | /audit-logs, /audit-logs/verify | supervisor, administrator |
 | GET | /incident-categories | any logged-in user |
 | POST | /incidents | tourist |
 | GET | /incidents, /incidents/{id} | tourist (own only), staff (all) |
-| PATCH | /incidents/{id}/status | operator, supervisor, administrator |
-| WS | /ws/dashboard | operator, supervisor, administrator (token sent in first message) |
-| WS | /ws/tourist | tourist (own incidents only; token sent in first message) |
-| POST | /sos | tourist (rate-limited) |
+| PATCH | /incidents/{id}/status | staff |
+| PATCH | /incidents/{id} | staff (override category / severity) |
 | POST | /incident/classify | any logged-in user (rate-limited; 503 if no model trained) |
-| PATCH | /incidents/{id} | operator, supervisor, administrator (override category / severity) |
-| POST | /risk/predict | operator, supervisor, administrator (503 if no model trained) |
-| POST | /assistant/query | any logged-in user |
+| POST | /sos | tourist (rate-limited) |
 | POST | /sos/{id}/cancel | tourist (own SOS only) |
 | GET | /nearby-resources?lat=&lon=&type=&k= | any logged-in user |
-| GET | /incidents/{id}/recommended-resources | operator, supervisor, administrator |
-| POST | /incidents/{id}/assign | operator, supervisor, administrator (simulated dispatch) |
-| POST | /tourist/location | tourist (consent required) |
-| GET | /tourist/notifications | tourist (own only) |
-| GET | /tourist/location/{user_id} | operator, supervisor, administrator (consent or active SOS; audited) |
+| GET | /incidents/{id}/recommended-resources | staff |
+| POST | /incidents/{id}/assign | staff (simulated dispatch) |
 | GET | /risk-zone?bbox=minLon,minLat,maxLon,maxLat | any logged-in user (GeoJSON) |
+| POST | /risk/predict | staff (503 if no model trained) |
+| POST | /assistant/query | any logged-in user |
+| GET | /analytics/summary?days=7 | staff |
+| WS | /ws/dashboard | staff (token sent in first message) |
+| WS | /ws/tourist | tourist (own incidents only; token sent in first message) |
+
+"Staff" = operator, supervisor or administrator.
 
 ## Run locally on Windows (no Docker)
 
-Requirements: PostgreSQL 16 with PostGIS, Python 3.11+, Node 22. Redis is optional until Phase 2.
+Requirements: PostgreSQL 16 with PostGIS, Python 3.11+, Node 22. Redis is optional (without
+it, live events stay inside one API process, which is fine for a demo).
 
 1. Create a database named `tsmirp` (for example in pgAdmin).
 2. Copy `.env.example` to `.env`, put your PostgreSQL password in it, and set `JWT_SECRET`
@@ -174,7 +185,8 @@ Requirements: PostgreSQL 16 with PostGIS, Python 3.11+, Node 22. Redis is option
    npm install
    npm run dev
    ```
-   Open http://localhost:5173
+   Open http://localhost:5173 and choose the tourist app or the authority dashboard.
+6. Daily clean-up of expired locations (e.g. Windows Task Scheduler): `python -m app.cli purge-expired`
 
 ## Run with Docker (optional)
 ```
@@ -182,21 +194,20 @@ docker compose up --build
 ```
 The containerised database is exposed on port 5433 so it does not clash with a local PostgreSQL.
 
-## What is simulated
-- Emergency dispatch, SMS and e-mail: **simulated** sandbox adapters (write to database and log only).
-  `app/services/notifier.py` contains no real SMS / e-mail provider on purpose.
-- Response-unit availability (AVAILABLE / BUSY) is simulated; "assign" only records a decision.
-- Datasets: open or **synthetic**; results on synthetic data are labelled as such.
-- Risk scores: relative decision-support estimates, not predictions that a crime will occur.
-
-(Expanded in Phase 9.)
+## Known data limitations
+- OpenStreetMap coverage is uneven: the Jaipur import (2026-10-08) found 403 "hospitals",
+  22 police stations and 1 fire station; some "hospitals" are clinics and some stations appear
+  twice. The data is used as-is.
+- All distances are straight-line approximations; real road distance is longer.
 
 ## Data attribution
-Map data and imported police/hospital locations (from Phase 3): © OpenStreetMap contributors,
-available under the Open Database License (ODbL). https://www.openstreetmap.org/copyright
+Map data and imported police / hospital / fire-station locations: © OpenStreetMap
+contributors, available under the Open Database License (ODbL).
+https://www.openstreetmap.org/copyright. Weather: Open-Meteo (https://open-meteo.com), CC BY 4.0.
 
 ## Repository layout
-- `backend/` — FastAPI app, Alembic migrations, tests
-- `frontend/` — React + TypeScript (tourist app and authority dashboard)
-- `ml/` — synthetic data generation, training, evaluation
-- `docs/` — architecture and privacy notes
+- `backend/` — FastAPI app (`app/api`, `core`, `models`, `schemas`, `services`, `ml`),
+  Alembic migrations, tests
+- `frontend/` — React + TypeScript (`src/tourist`, `src/dashboard`, `src/shared`)
+- `ml/` — synthetic data generation, training, evaluation, reports
+- `docs/` — architecture, privacy and security notes

@@ -20,6 +20,10 @@ Load the SYNTHETIC demo risk zones (hand-made, not crime data):
 Run the risk model for a day (needs `python -m ml.train_risk_model` first):
 
     python -m app.cli predict-risk --date 2026-10-09
+
+Delete locations whose retention time has passed (run daily, e.g. with Task Scheduler):
+
+    python -m app.cli purge-expired
 """
 
 import argparse
@@ -34,6 +38,7 @@ from app.ml.risk_features import bin_of
 from app.models.user import Role
 from app.services import osm_import
 from app.services.audit import record_event
+from app.services.retention import purge_expired
 from app.services.risk import predict_day
 from app.services.users import EmailAlreadyRegistered, create_user
 from app.services.zones import seed_zones
@@ -125,6 +130,16 @@ def predict_risk_command(day: date | None) -> None:
     print(f"Levels: {summary.by_level} (relative estimates; model trained on SYNTHETIC data)")
 
 
+def purge_expired_command() -> None:
+    with SessionLocal() as db:
+        result = purge_expired(db, datetime.now(UTC))
+        db.commit()
+    print(
+        f"Deleted {result.incident_locations_deleted} expired incident locations and cleared "
+        f"{result.tourist_locations_cleared} expired tourist locations."
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -143,6 +158,8 @@ def main() -> None:
     risk_cmd = commands.add_parser("predict-risk", help="run the risk model for a day")
     risk_cmd.add_argument("--date", type=date.fromisoformat, help="YYYY-MM-DD (default: today)")
 
+    commands.add_parser("purge-expired", help="delete locations whose retention time has passed")
+
     args = parser.parse_args()
     if args.command == "create-admin":
         create_admin(args.email, args.name)
@@ -152,6 +169,8 @@ def main() -> None:
         seed_zones_command(args.file)
     elif args.command == "predict-risk":
         predict_risk_command(args.date)
+    elif args.command == "purge-expired":
+        purge_expired_command()
 
 
 if __name__ == "__main__":

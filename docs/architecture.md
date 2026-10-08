@@ -1,7 +1,9 @@
-# Architecture (outline — expanded in Phase 9)
+# Architecture
+
+The diagram with all parts is in the README. Overview:
 
 ```
- Tourist app (PWA) ─┐                      ┌─ PostgreSQL 16 + PostGIS
+ Tourist app ───────┐                      ┌─ PostgreSQL 16 + PostGIS
                     ├─ HTTPS / WebSocket ─ FastAPI ─┤
  Authority dashboard┘                      └─ Redis (pub/sub, from Phase 2)
 ```
@@ -70,3 +72,13 @@ falls back), events are delivered inside the single API process.
   model artefact. Weather at prediction time comes from the request or the fallback table.
 - A tourist inside both a hand-drawn zone and a grid cell can get one alert for each.
 - Staff see an incident's location only while the reporter's consent is on, or for an SOS.
+- Digital tourist ID (Phase 9): a JWT with type "tourist_credential", signed with the same
+  server secret, valid for 30 days (`CREDENTIAL_DAYS`, assumption). Claims: user id, name,
+  nationality, issue and expiry time - no location. Verification also checks that the account
+  is still an active tourist. No revocation list (limitation). QR codes are drawn by `segno`.
+- Retention (Phase 9): `python -m app.cli purge-expired` deletes incident locations and clears
+  tourists' latest locations whose expiry time has passed; incidents are kept without location.
+  Each run is audited with the counts.
+- Analytics (Phase 9): plain SQL counts for incidents created in the last N days (India time,
+  1-90 days); "needs review" uses the same rule as the incident list.
+- Security checks against the OWASP API Top 10 are listed in docs/security.md.

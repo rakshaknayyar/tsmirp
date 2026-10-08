@@ -1,6 +1,6 @@
 // Tourist app: log in, SOS, location consent + sharing with geofence alerts, map with risk
 // zones and nearby help, incident reports (English, Hindi or romanised Hindi), the safety
-// assistant, my incidents and my notifications.
+// assistant, the digital tourist ID (QR code), my incidents and my notifications.
 // Status changes of my own incidents arrive live over /ws/tourist.
 
 import { useCallback, useEffect, useState } from "react";
@@ -20,6 +20,7 @@ import type {
   Session,
 } from "../shared/types";
 import AssistantPanel from "./AssistantPanel";
+import CredentialPanel from "./CredentialPanel";
 import LocationPanel from "./LocationPanel";
 import SosPanel from "./SosPanel";
 import TouristMap from "./TouristMap";
@@ -205,6 +206,8 @@ function TouristHome({ session, onLogout }: { session: Session; onLogout: () => 
       {message && <p role="status">{message}</p>}
 
       <AssistantPanel token={token} />
+
+      <CredentialPanel token={token} />
 
       <h2>My incidents</h2>
       {incidents.length === 0 ? (

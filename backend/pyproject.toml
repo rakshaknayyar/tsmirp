@@ -23,6 +23,7 @@ dependencies = [
     "httpx>=0.27",
     "scikit-learn>=1.5",
     "joblib>=1.4",
+    "segno>=1.6",  # QR codes for the tourist credential (pure Python)
 ]
 
 [project.optional-dependencies]

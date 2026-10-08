@@ -72,6 +72,8 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 15
     refresh_token_days: int = 7
+    # Digital tourist ID (QR credential) lifetime: an initial assumption, e.g. a typical trip.
+    credential_days: int = 30
 
     # Login rate limit: at most this many attempts per window, per IP address + e-mail.
     login_rate_limit: int = 5
