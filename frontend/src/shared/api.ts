@@ -55,8 +55,3 @@ export async function login(email: string, password: string): Promise<Session> {
   const user = await apiGet<User>("/auth/me", tokens.access_token);
   return { token: tokens.access_token, user };
 }
-
-export function dashboardSocketUrl(): string {
-  const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${scheme}://${window.location.host}/api/ws/dashboard`;
-}

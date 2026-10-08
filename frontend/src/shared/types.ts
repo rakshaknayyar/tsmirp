@@ -94,6 +94,16 @@ export type Profile = {
   consent_time: string | null;
 };
 
+export type NearbyResource = Omit<RecommendedResource, "capability_match">;
+
+export type SosResponse = {
+  incident: Incident;
+  created: boolean;
+  contacts_notified: number; // sandbox SMS only
+  nearest_help: NearbyResource[];
+  advice: string;
+};
+
 export type Session = { token: string; user: User };
 
 export const STAFF_ROLES: Role[] = ["operator", "supervisor", "administrator"];

@@ -25,7 +25,9 @@ from app.services.incidents import (
     create_incident,
     to_incident_out,
 )
+from app.services.notifier import notify_reporter_of_status
 from app.services.resources import release_assignments
+from app.services.sos import after_incident_finished
 
 router = APIRouter(tags=["incidents"])
 
@@ -119,6 +121,8 @@ def update_status(
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
     if body.status in (IncidentStatus.RESOLVED, IncidentStatus.CLOSED):
         release_assignments(db, incident)  # simulated resources become AVAILABLE again
+        after_incident_finished(db, incident)  # SOS-only location clean-up
+    notify_reporter_of_status(db, incident)
     record_event(
         db,
         "incident.status_changed",

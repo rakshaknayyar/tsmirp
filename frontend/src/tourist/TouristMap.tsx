@@ -7,9 +7,7 @@ import { apiGet } from "../shared/api";
 import MapView from "../shared/MapView";
 import { formatDistance, popupContent } from "../shared/mapUtils";
 import RiskZonesLayer from "../shared/RiskZonesLayer";
-import type { Position, RecommendedResource } from "../shared/types";
-
-type NearbyResource = Omit<RecommendedResource, "capability_match">;
+import type { NearbyResource, Position } from "../shared/types";
 
 // Moves the map to the tourist's position whenever it changes.
 function FollowPosition({ position }: { position: Position }) {

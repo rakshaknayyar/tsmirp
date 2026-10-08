@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import engine, get_db
-from app.core.rate_limit import login_limiter
+from app.core.rate_limit import login_limiter, sos_limiter
 from app.main import app
 from app.models.user import Role, User
 from app.services.users import create_user
@@ -70,6 +70,7 @@ def app_client(db: Session) -> Iterator[TestClient]:
     Using it as a context manager also runs the app's startup/shutdown (the event bus)."""
     app.dependency_overrides[get_db] = lambda: db
     login_limiter.reset()
+    sos_limiter.reset()
     try:
         with TestClient(app) as test_client:
             yield test_client

@@ -20,6 +20,7 @@ from app.schemas.resource import (
 from app.services.audit import record_event
 from app.services.events import event_bus
 from app.services.incidents import InvalidTransition, to_incident_out
+from app.services.notifier import notify_reporter_of_status
 from app.services.resources import (
     NearbyResource,
     ResourceUnavailable,
@@ -103,6 +104,7 @@ def assign(incident_id: int, body: AssignRequest, staff: StaffUser, db: DbSessio
         assignment = assign_resource(db, incident, resource, staff, distance_m, body.note)
     except (InvalidTransition, ResourceUnavailable) as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
+    notify_reporter_of_status(db, incident)
     record_event(
         db,
         "incident.assigned",

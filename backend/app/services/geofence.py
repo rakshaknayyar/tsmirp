@@ -6,7 +6,8 @@ For each location fix from a tourist (who has given consent):
 3. Find the risk zones that contain the point (PostGIS ST_Contains) and the zones that are
    merely nearby (ST_DWithin on geography, in metres) - nearby zones never alert.
 4. Dwell/debounce, only for HIGH and CRITICAL zones:
-   - remember when the tourist entered the zone ("inside_since");
+   - remember when the tourist entered the zone ("inside_since"); if the previous fix is
+     older than settings.geofence_stale_seconds, the dwell clock starts again;
    - alert once they have been inside for settings.geofence_dwell_seconds;
    - never alert again for that zone within settings.geofence_cooldown_seconds, even if they
      step out and back in (stops repeated alerts when walking along a zone's edge).
@@ -105,6 +106,13 @@ def process_fix(
             reason=f"Location accuracy must be {settings.geofence_max_accuracy_m:.0f} m or better",
         )
 
+    # If we have not heard from the tourist for a while, we cannot know they stayed inside
+    # the zone the whole time, so every dwell clock starts again.
+    previous_fix_at = profile.last_location_at
+    stale = previous_fix_at is None or now - previous_fix_at > timedelta(
+        seconds=settings.geofence_stale_seconds
+    )
+
     profile.last_location = WKTElement(f"POINT({lon} {lat})", srid=4326)
     profile.last_location_accuracy_m = accuracy_m
     profile.last_location_at = now
@@ -117,6 +125,9 @@ def process_fix(
     cooldown = timedelta(seconds=settings.geofence_cooldown_seconds)
     # Copy the stored state so SQLAlchemy notices the change when we assign it back.
     state = {key: dict(entry) for key, entry in (profile.geofence_state or {}).items()}
+    if stale:
+        for entry in state.values():
+            entry["inside_since"] = None
 
     alerts = []
     inside_keys = set()

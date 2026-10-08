@@ -5,7 +5,22 @@ B.Tech final-year prototype for Smart India Hackathon problem statement **SIH250
 > **Decision support only.** TSMIRP is not a replacement for police or emergency services.
 > In a real emergency, call **112**.
 
-## Current status: Phase 4 (risk zones, geofencing, maps)
+## Current status: Phase 5 (SOS, simulated dispatch, sandbox notifications)
+- SOS button with a 5-second cancel window in the app; `POST /sos` creates a CRITICAL
+  incident (`is_sos`, no category - SOS skips classification). An open SOS is returned
+  instead of creating a duplicate. Rate-limited (3 per 10 min per account; the error says
+  "call 112")
+- Pressing SOS shares the location for that emergency even without general consent; it is
+  deleted again when the SOS ends if consent is off
+- **Sandbox only**: emergency contacts get a simulated SMS, the tourist a simulated e-mail
+  (stored in `notifications`, logged with masked numbers, never sent anywhere)
+- Dashboard: red active-SOS banner; acknowledge -> recommend -> assign (simulated dispatch)
+- Every status change notifies the tourist in-app and live over `WS /ws/tourist`, which only
+  ever carries events about the tourist's own incidents
+- "I'm safe" (`POST /sos/{id}/cancel`) resolves the SOS, frees resources, tells contacts
+  (sandbox SMS)
+
+## Phase 4 (risk zones, geofencing, maps)
 - Risk zones (PostGIS polygons, GiST index) with a RELATIVE level LOW / MODERATE / HIGH /
   CRITICAL. The Jaipur demo zones are **synthetic** (hand-made circles around public places,
   not crime data): `python -m app.cli seed-zones`
@@ -74,6 +89,9 @@ B.Tech final-year prototype for Smart India Hackathon problem statement **SIH250
 | GET | /incidents, /incidents/{id} | tourist (own only), staff (all) |
 | PATCH | /incidents/{id}/status | operator, supervisor, administrator |
 | WS | /ws/dashboard | operator, supervisor, administrator (token sent in first message) |
+| WS | /ws/tourist | tourist (own incidents only; token sent in first message) |
+| POST | /sos | tourist (rate-limited) |
+| POST | /sos/{id}/cancel | tourist (own SOS only) |
 | GET | /nearby-resources?lat=&lon=&type=&k= | any logged-in user |
 | GET | /incidents/{id}/recommended-resources | operator, supervisor, administrator |
 | POST | /incidents/{id}/assign | operator, supervisor, administrator (simulated dispatch) |
@@ -118,6 +136,8 @@ The containerised database is exposed on port 5433 so it does not clash with a l
 
 ## What is simulated
 - Emergency dispatch, SMS and e-mail: **simulated** sandbox adapters (write to database and log only).
+  `app/services/notifier.py` contains no real SMS / e-mail provider on purpose.
+- Response-unit availability (AVAILABLE / BUSY) is simulated; "assign" only records a decision.
 - Datasets: open or **synthetic**; results on synthetic data are labelled as such.
 - Risk scores: relative decision-support estimates, not predictions that a crime will occur.
 

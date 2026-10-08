@@ -87,19 +87,27 @@ def create_incident(db: Session, reporter: User, body: IncidentCreate) -> Incide
     db.flush()
 
     if body.location is not None:
-        now = datetime.now(UTC)
-        db.add(
-            IncidentLocation(
-                incident_id=incident.id,
-                # WKT text "POINT(lon lat)": longitude comes first in PostGIS.
-                geom=WKTElement(f"POINT({body.location.lon} {body.location.lat})", srid=4326),
-                accuracy_m=body.location.accuracy_m,
-                recorded_at=now,
-                expires_at=now + timedelta(days=settings.location_retention_days),
-            )
+        add_incident_location(
+            db, incident, body.location.lat, body.location.lon, body.location.accuracy_m
         )
-        db.flush()
     return incident
+
+
+def add_incident_location(
+    db: Session, incident: Incident, lat: float, lon: float, accuracy_m: float | None
+) -> None:
+    now = datetime.now(UTC)
+    db.add(
+        IncidentLocation(
+            incident_id=incident.id,
+            # WKT text "POINT(lon lat)": longitude comes first in PostGIS.
+            geom=WKTElement(f"POINT({lon} {lat})", srid=4326),
+            accuracy_m=accuracy_m,
+            recorded_at=now,
+            expires_at=now + timedelta(days=settings.location_retention_days),
+        )
+    )
+    db.flush()
 
 
 def _may_see_location(db: Session, incident: Incident, viewer: User | None) -> bool:

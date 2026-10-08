@@ -39,6 +39,12 @@ falls back), events are delivered inside the single API process.
   state is a small JSON column there too.
 - Geofence parameters: ignore fixes worse than 100 m; alert after 60 s dwell; 10 min cooldown
   per zone; "nearby" = within 200 m (`GEOFENCE_*` settings).
+- Geofence dwell restarts if the previous fix is older than 10 minutes
+  (`GEOFENCE_STALE_SECONDS`), so an old "inside since" time cannot trigger an instant alert.
+- SOS: 5 s cancel window (in the app); 3 SOS per 10 min per account; a shared location up to
+  10 min old is reused when the SOS itself has none; an open SOS is returned instead of a
+  duplicate; "I'm safe" may resolve the SOS from any open status (special path outside the
+  operator lifecycle).
 - Risk zones in the demo are synthetic circles (ml/data/synthetic_risk_zones_jaipur.json).
   A zone's level is its `base_level`; the risk model (Phase 7) will add predicted levels.
 - Staff see an incident's location only while the reporter's consent is on, or for an SOS.

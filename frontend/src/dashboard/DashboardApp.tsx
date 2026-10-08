@@ -4,7 +4,8 @@
 
 import { Fragment, useCallback, useEffect, useState } from "react";
 
-import { apiGet, apiRequest, dashboardSocketUrl } from "../shared/api";
+import { apiGet, apiRequest } from "../shared/api";
+import { openLiveSocket } from "../shared/liveSocket";
 import LoginForm from "../shared/LoginForm";
 import SimulationNotice from "../shared/SimulationNotice";
 import { STAFF_ROLES } from "../shared/types";
@@ -29,11 +30,6 @@ type GeofenceAlert = {
   zone: { id: number; name: string; level: string };
   at: string;
 };
-
-type LiveEvent =
-  | { type: "ready"; mode: string }
-  | { type: "incident.created" | "incident.status_changed"; incident: Incident }
-  | GeofenceAlert;
 
 export default function DashboardApp() {
   const [session, setSession] = useState<Session | null>(null);
@@ -71,34 +67,22 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
       .catch((err: Error) => setError(err.message));
   }, [session.token]);
 
-  useEffect(() => {
-    let socket: WebSocket;
-    let retryTimer: number | undefined;
-    let stopped = false;
-
-    function connect() {
-      socket = new WebSocket(dashboardSocketUrl());
-      // The token goes in the first message, not in the URL.
-      socket.onopen = () => socket.send(JSON.stringify({ type: "auth", token: session.token }));
-      socket.onmessage = (message) => {
-        const event = JSON.parse(message.data) as LiveEvent;
-        if (event.type === "ready") setLiveMode(event.mode);
-        else if (event.type === "geofence.alert") setAlerts((list) => [event, ...list].slice(0, 10));
-        else setIncidents((list) => upsert(list, event.incident));
-      };
-      socket.onclose = () => {
-        setLiveMode(null);
-        if (!stopped) retryTimer = window.setTimeout(connect, 3000); // try again shortly
-      };
-    }
-
-    connect();
-    return () => {
-      stopped = true;
-      window.clearTimeout(retryTimer);
-      socket.close();
-    };
-  }, [session.token]);
+  useEffect(
+    () =>
+      openLiveSocket(
+        "/ws/dashboard",
+        session.token,
+        (event) => {
+          if (event.type === "geofence.alert") {
+            setAlerts((list) => [event as GeofenceAlert, ...list].slice(0, 10));
+          } else if ("incident" in event) {
+            setIncidents((list) => upsert(list, event.incident as Incident));
+          }
+        },
+        (status) => setLiveMode(status.mode),
+      ),
+    [session.token],
+  );
 
   const changeStatus = useCallback(
     async (incident: Incident, status: IncidentStatus) => {
@@ -125,6 +109,8 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
         <button onClick={onLogout}>Log out</button>
       </p>
       {error && <p role="alert">{error}</p>}
+
+      <ActiveSosBanner incidents={incidents} />
 
       <DashboardMap token={session.token} incidents={incidents} />
 
@@ -166,7 +152,10 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
                   <td>{new Date(incident.created_at).toLocaleString()}</td>
                   <td>{incident.category?.name ?? "Uncategorised"}</td>
                   <td>{incident.category?.department ?? "-"}</td>
-                  <td>{incident.severity}</td>
+                  <td>
+                    {incident.severity}
+                    {incident.is_sos && <strong style={{ color: "#c62828" }}> (SOS)</strong>}
+                  </td>
                   <td>{incident.status}</td>
                   <td>{incident.description}</td>
                   <td>
@@ -202,5 +191,41 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
       </div>
       {incidents.length === 0 && <p>No incidents yet.</p>}
     </>
+  );
+}
+
+// Red banner listing every SOS that is still open, so it cannot be missed.
+function ActiveSosBanner({ incidents }: { incidents: Incident[] }) {
+  const open = incidents.filter(
+    (i) => i.is_sos && i.status !== "RESOLVED" && i.status !== "CLOSED",
+  );
+  if (open.length === 0) return null;
+  return (
+    <div
+      role="alert"
+      style={{
+        background: "#c62828",
+        color: "#fff",
+        padding: "8px 12px",
+        borderRadius: 6,
+        margin: "8px 0",
+      }}
+    >
+      <strong>
+        {open.length} active SOS{open.length > 1 ? " alerts" : ""}
+      </strong>
+      <ul style={{ margin: "4px 0" }}>
+        {open.map((i) => (
+          <li key={i.id}>
+            SOS #{i.id} from tourist #{i.reporter_user_id} - {i.status} -{" "}
+            {i.location
+              ? `at ${i.location.lat.toFixed(5)}, ${i.location.lon.toFixed(5)}`
+              : "location unknown"}{" "}
+            - {new Date(i.created_at).toLocaleTimeString()}
+          </li>
+        ))}
+      </ul>
+      Acknowledge it below, then use "Recommend resources" to assign (simulated dispatch).
+    </div>
   );
 }

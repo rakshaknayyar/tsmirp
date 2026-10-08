@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     geofence_dwell_seconds: int = 60  # must stay inside this long before an alert
     geofence_cooldown_seconds: int = 600  # no repeat alert for the same zone within this
     geofence_near_m: float = 200  # zones this close are reported as "nearby" (no alert)
+    geofence_stale_seconds: int = 600  # a gap longer than this between fixes restarts dwell
+
+    # SOS (initial assumptions, configurable; see app/services/sos.py).
+    sos_rate_limit: int = 3  # SOS requests per user per window (the UI then says: call 112)
+    sos_rate_window_seconds: int = 600
+    sos_last_location_max_age_seconds: int = 600  # reuse a shared location this recent
 
     # No default on purpose: the API refuses to start without a real secret.
     jwt_secret: str = Field(min_length=32)

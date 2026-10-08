@@ -154,6 +154,26 @@ def test_dwell_and_debounce(db, users, monkeypatch):
     assert fix(870, INSIDE) == 1  # dwelled again -> new alert
 
 
+def test_long_gap_between_fixes_restarts_the_dwell_clock(db, users, monkeypatch):
+    # Regression test: found in the browser check - a fix sent hours after the last one
+    # alerted at once, because the old "inside since" time was still remembered.
+    monkeypatch.setattr(settings, "geofence_dwell_seconds", 60)
+    monkeypatch.setattr(settings, "geofence_cooldown_seconds", 600)
+    monkeypatch.setattr(settings, "geofence_stale_seconds", 600)
+    add_zone(db, "Test critical zone", RiskLevel.CRITICAL)
+    tourist = users[Role.TOURIST]
+    profile = _profile(db, tourist)
+    t0 = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+    def fix(seconds: int) -> int:
+        result = process_fix(db, tourist, profile, LAT, LON, 20, t0 + timedelta(seconds=seconds))
+        return len(result.alerts)
+
+    assert fix(0) == 0  # entered, then the phone went quiet for 3 hours
+    assert fix(3 * 3600) == 0  # back: dwell starts again instead of alerting at once
+    assert fix(3 * 3600 + 61) == 1  # a genuine 61 s stay -> alert
+
+
 # ---------- consent revoke and staff access ----------
 
 

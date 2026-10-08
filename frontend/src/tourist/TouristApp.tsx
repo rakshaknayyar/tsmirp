@@ -1,11 +1,12 @@
-// Tourist app: log in, location consent + sharing with geofence alerts, map with risk zones
-// and nearby help, incident reports, my incidents and my notifications.
-// SOS is added in Phase 5.
+// Tourist app: log in, SOS, location consent + sharing with geofence alerts, map with risk
+// zones and nearby help, incident reports, my incidents and my notifications.
+// Status changes of my own incidents arrive live over /ws/tourist.
 
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { apiGet, apiRequest } from "../shared/api";
+import { openLiveSocket } from "../shared/liveSocket";
 import LoginForm from "../shared/LoginForm";
 import SimulationNotice from "../shared/SimulationNotice";
 import type {
@@ -18,6 +19,7 @@ import type {
   Session,
 } from "../shared/types";
 import LocationPanel from "./LocationPanel";
+import SosPanel from "./SosPanel";
 import TouristMap from "./TouristMap";
 
 export default function TouristApp() {
@@ -48,6 +50,7 @@ function TouristHome({ session, onLogout }: { session: Session; onLogout: () => 
   const [categoryCode, setCategoryCode] = useState("");
   const [attachLocation, setAttachLocation] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [live, setLive] = useState(false);
 
   const showError = (err: Error) => setMessage(err.message);
 
@@ -63,6 +66,30 @@ function TouristHome({ session, onLogout }: { session: Session; onLogout: () => 
     apiGet<Category[]>("/incident-categories", token).then(setCategories).catch(showError);
     loadLists();
   }, [token, loadLists]);
+
+  // Live updates about my own incidents (e.g. "your SOS was ACKNOWLEDGED").
+  useEffect(
+    () =>
+      openLiveSocket(
+        "/ws/tourist",
+        token,
+        (event) => {
+          if ("incident" in event) {
+            const updated = event.incident as Incident;
+            setIncidents((list) =>
+              list.some((i) => i.id === updated.id)
+                ? list.map((i) => (i.id === updated.id ? updated : i))
+                : [updated, ...list],
+            );
+            apiGet<AppNotification[]>("/tourist/notifications", token)
+              .then(setNotifications)
+              .catch(showError);
+          }
+        },
+        (status) => setLive(status.connected),
+      ),
+    [token],
+  );
 
   async function changeConsent(consent: boolean) {
     try {
@@ -112,8 +139,11 @@ function TouristHome({ session, onLogout }: { session: Session; onLogout: () => 
     <>
       <SimulationNotice />
       <p>
-        Logged in as {session.user.full_name} <button onClick={onLogout}>Log out</button>
+        Logged in as {session.user.full_name} - live updates: {live ? "on" : "reconnecting"}{" "}
+        <button onClick={onLogout}>Log out</button>
       </p>
+
+      <SosPanel token={token} position={position} incidents={incidents} onChanged={loadLists} />
 
       <LocationPanel
         token={token}
@@ -163,8 +193,9 @@ function TouristHome({ session, onLogout }: { session: Session; onLogout: () => 
         <ul>
           {incidents.map((incident) => (
             <li key={incident.id}>
-              #{incident.id} {incident.category?.name ?? "Uncategorised"} - {incident.status} -{" "}
-              {incident.description}
+              #{incident.id}{" "}
+              {incident.is_sos ? "SOS" : (incident.category?.name ?? "Uncategorised")} -{" "}
+              {incident.status} - {incident.description}
             </li>
           ))}
         </ul>
