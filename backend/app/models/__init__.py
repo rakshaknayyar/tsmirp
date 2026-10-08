@@ -17,7 +17,7 @@ from app.models.resource import (
     ResponseAssignment,
     ResponseResource,
 )
-from app.models.risk import ALERT_LEVELS, RiskLevel, RiskZone
+from app.models.risk import ALERT_LEVELS, RiskLevel, RiskPrediction, RiskZone, ZoneKind
 from app.models.tourist import EmergencyContact, TouristProfile
 from app.models.user import Role, User
 
@@ -38,9 +38,11 @@ __all__ = [
     "ResponseAssignment",
     "ResponseResource",
     "RiskLevel",
+    "RiskPrediction",
     "RiskZone",
     "Role",
     "Severity",
     "TouristProfile",
     "User",
+    "ZoneKind",
 ]

@@ -62,6 +62,8 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
   const [pickerFor, setPickerFor] = useState<number | null>(null); // incident id
   const [alerts, setAlerts] = useState<GeofenceAlert[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [zonesVersion, setZonesVersion] = useState(0);
+  const [riskMessage, setRiskMessage] = useState<string | null>(null);
 
   useEffect(() => {
     apiGet<Incident[]>("/incidents", session.token)
@@ -122,6 +124,30 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
     [session.token],
   );
 
+  // Run the risk model for today (POST /risk/predict) and redraw the map.
+  async function computeRisk() {
+    setRiskMessage("Computing...");
+    try {
+      const result = await apiRequest<{
+        model_version: string;
+        rows_written: number;
+        by_level: Record<string, number>;
+        weather_source: string;
+      }>("POST", "/risk/predict", { token: session.token, body: {} });
+      const levels = Object.entries(result.by_level)
+        .map(([level, n]) => `${level} ${n}`)
+        .join(", ");
+      setRiskMessage(
+        `${result.rows_written} cell-periods scored by ${result.model_version} ` +
+          `(weather: ${result.weather_source}): ${levels}. Relative estimates from a model ` +
+          "trained on synthetic data.",
+      );
+      setZonesVersion((v) => v + 1);
+    } catch (err) {
+      setRiskMessage((err as Error).message);
+    }
+  }
+
   return (
     <>
       <SimulationNotice />
@@ -134,7 +160,11 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
 
       <ActiveSosBanner incidents={incidents} />
 
-      <DashboardMap token={session.token} incidents={incidents} />
+      <p>
+        <button onClick={computeRisk}>Compute today's risk levels</button>{" "}
+        {riskMessage && <span role="status">{riskMessage}</span>}
+      </p>
+      <DashboardMap token={session.token} incidents={incidents} zonesVersion={zonesVersion} />
 
       <h2>Geofence alerts (live)</h2>
       {alerts.length === 0 ? (

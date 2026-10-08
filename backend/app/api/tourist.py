@@ -45,9 +45,9 @@ def _own_profile(user: User, db: Session) -> TouristProfile:
     return profile
 
 
-def _zone_brief(zone: RiskZone) -> ZoneBrief:
+def _zone_brief(zone: RiskZone, levels: dict) -> ZoneBrief:
     return ZoneBrief(
-        id=zone.id, name=zone.name, level=zone.base_level, is_synthetic=zone.is_synthetic
+        id=zone.id, name=zone.name, level=levels[zone.id].level, is_synthetic=zone.is_synthetic
     )
 
 
@@ -111,8 +111,8 @@ def share_location(body: LocationFix, user: TouristUser, db: DbSession) -> FixRe
     return FixResultOut(
         accepted=result.accepted,
         reason=result.reason,
-        inside_zones=[_zone_brief(z) for z in result.inside],
-        nearby_zones=[_zone_brief(z) for z in result.nearby],
+        inside_zones=[_zone_brief(z, result.levels) for z in result.inside],
+        nearby_zones=[_zone_brief(z, result.levels) for z in result.nearby],
         alerts=[NotificationOut.model_validate(n) for n in result.alerts],
     )
 

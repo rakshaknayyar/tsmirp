@@ -5,7 +5,21 @@ B.Tech final-year prototype for Smart India Hackathon problem statement **SIH250
 > **Decision support only.** TSMIRP is not a replacement for police or emergency services.
 > In a real emergency, call **112**.
 
-## Current status: Phase 6 (text classifier, severity rules, classification)
+## Current status: Phase 7 (risk model, predictions, level-based alerts)
+- One year of **synthetic** tourist incidents for Jaipur (`ml/incident_data.py`; hotspots,
+  time of day, weekend, season, rain; three hotspots hidden from the model on purpose) and
+  real daily weather from the Open-Meteo archive (approximate fallback table if offline)
+- Risk model per ~1 km grid cell x 6-hour bin: `python -m ml.train_risk_model` (report:
+  `ml/reports/risk_model.md`). Chronological train/validation/test split, blocked spatial CV
+  (logistic regression vs random forest), isotonic calibration, full metric set, compared with
+  a "cell's historical rate" baseline. **Synthetic data - not real-world accuracy**
+- `POST /risk/predict` (staff) or `python -m app.cli predict-risk` stores predictions with the
+  model version; levels LOW < 0.25 <= MODERATE < 0.50 <= HIGH < 0.75 <= CRITICAL (initial,
+  configurable)
+- Geofence alerts, the "inside a high-risk zone" severity rule and the maps use each zone's
+  level for the current 6-hour period (model level for grid cells)
+
+## Phase 6 (text classifier, severity rules, classification)
 - Synthetic incident texts (English, Hindi, romanised Hindi; seeded templates) and a
   TF-IDF + logistic regression classifier: `python -m ml.train_text_classifier`
   (report: `ml/reports/text_classifier.md`, **synthetic data - not real-world accuracy**)
@@ -106,6 +120,7 @@ B.Tech final-year prototype for Smart India Hackathon problem statement **SIH250
 | POST | /sos | tourist (rate-limited) |
 | POST | /incident/classify | any logged-in user (rate-limited; 503 if no model trained) |
 | PATCH | /incidents/{id} | operator, supervisor, administrator (override category / severity) |
+| POST | /risk/predict | operator, supervisor, administrator (503 if no model trained) |
 | POST | /sos/{id}/cancel | tourist (own SOS only) |
 | GET | /nearby-resources?lat=&lon=&type=&k= | any logged-in user |
 | GET | /incidents/{id}/recommended-resources | operator, supervisor, administrator |
@@ -131,7 +146,8 @@ Requirements: PostgreSQL 16 with PostGIS, Python 3.11+, Node 22. Redis is option
    python -m app.cli create-admin --email you@example.org --name "Your Name"
    python -m app.cli import-osm --area jaipur
    python -m app.cli seed-zones
-   cd .. && python -m ml.train_text_classifier && cd backend
+   cd .. && python -m ml.train_text_classifier && python -m ml.train_risk_model && cd backend
+   python -m app.cli predict-risk
    uvicorn app.main:app --reload
    ```
    `create-admin` asks for the password without showing it. Run it once.

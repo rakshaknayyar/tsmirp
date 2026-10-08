@@ -52,5 +52,12 @@ falls back), events are delivered inside the single API process.
   accident, lost person, unknown MEDIUM; harassment, medical emergency, natural disaster HIGH;
   fire CRITICAL. The brief's keyword rules raise it from there (see app/services/severity.py).
 - Risk zones in the demo are synthetic circles (ml/data/synthetic_risk_zones_jaipur.json).
-  A zone's level is its `base_level`; the risk model (Phase 7) will add predicted levels.
+- Risk model: unit = ~1 km grid cell x 6-hour bin (India time); grid cells are stored as
+  risk_zones with kind "grid"; predictions in risk_predictions with the model_version.
+  A zone's EFFECTIVE level = fixed base_level for hand-drawn zones, the latest prediction for
+  the current bin for grid cells (LOW if none). Level thresholds 0.25 / 0.50 / 0.75 (brief).
+- Risk features are shared code (backend/app/ml/risk_features.py) used by training and the
+  API. The only history feature is each cell's training-period incident rate, stored in the
+  model artefact. Weather at prediction time comes from the request or the fallback table.
+- A tourist inside both a hand-drawn zone and a grid cell can get one alert for each.
 - Staff see an incident's location only while the reporter's consent is on, or for an SOS.

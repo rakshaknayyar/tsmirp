@@ -1,6 +1,11 @@
-"""Risk zones: seeding the SYNTHETIC demo zones, and fetching zones for the map."""
+"""Risk zones: seeding the SYNTHETIC demo zones, and fetching zones for the map.
+
+The map shows each zone's EFFECTIVE level right now (app/services/risk.py): the fixed level of
+a hand-drawn zone, or the risk model's level for a grid cell.
+"""
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -8,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models.risk import RiskLevel, RiskZone
 from app.services.geo import geography_point
+from app.services.risk import effective_levels
 
 
 def seed_zones(db: Session, path: Path) -> tuple[int, int]:
@@ -47,7 +53,8 @@ def zones_geojson(
         select(RiskZone, func.ST_AsGeoJSON(RiskZone.geom))
         .where(func.ST_Intersects(RiskZone.geom, box))
         .order_by(RiskZone.id)
-    )
+    ).all()
+    levels = effective_levels(db, [zone for zone, _ in rows], datetime.now(UTC))
     features = [
         {
             "type": "Feature",
@@ -56,7 +63,10 @@ def zones_geojson(
                 "id": zone.id,
                 "name": zone.name,
                 "description": zone.description,
-                "level": zone.base_level.value,
+                "kind": zone.kind.value,
+                "level": levels[zone.id].level.value,
+                "level_source": levels[zone.id].source,
+                "score": levels[zone.id].score,
                 "is_synthetic": zone.is_synthetic,
             },
         }

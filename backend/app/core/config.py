@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     classify_rate_limit: int = 30  # classification requests per user per window
     classify_rate_window_seconds: int = 60
 
+    # Risk model (trained by `python -m ml.train_risk_model`).
+    risk_model_dir: Path = REPO_ROOT / "ml" / "artefacts" / "risk_model"
+    # Score thresholds LOW < t1 <= MODERATE < t2 <= HIGH < t3 <= CRITICAL
+    # (initial assumptions from the project brief; configurable).
+    risk_level_thresholds: tuple[float, float, float] = (0.25, 0.50, 0.75)
+
     # No default on purpose: the API refuses to start without a real secret.
     jwt_secret: str = Field(min_length=32)
     jwt_algorithm: str = "HS256"

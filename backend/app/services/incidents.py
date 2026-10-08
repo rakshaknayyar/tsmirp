@@ -33,6 +33,7 @@ from app.models.user import User
 from app.schemas.incident import CategoryOut, IncidentCreate, IncidentOut, LocationOut
 from app.services.classification import classify_text
 from app.services.geofence import zones_containing
+from app.services.risk import effective_levels
 from app.services.severity import SeverityAssessment, assess_severity
 
 S = IncidentStatus
@@ -87,7 +88,10 @@ def category_by_code(db: Session, code: str) -> IncidentCategory:
 
 
 def in_high_risk_zone(db: Session, lat: float, lon: float) -> bool:
-    return any(zone.base_level in ALERT_LEVELS for zone in zones_containing(db, lat, lon))
+    """True if the point is inside a zone whose CURRENT effective level is HIGH/CRITICAL."""
+    zones = zones_containing(db, lat, lon)
+    levels = effective_levels(db, zones, datetime.now(UTC))
+    return any(levels[zone.id].level in ALERT_LEVELS for zone in zones)
 
 
 def create_incident(db: Session, reporter: User, body: IncidentCreate) -> CreatedIncident:

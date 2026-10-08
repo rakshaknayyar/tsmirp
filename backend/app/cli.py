@@ -16,18 +16,25 @@ A download is saved to ml/data/raw/osm_<area>.json so the import can be repeated
 Load the SYNTHETIC demo risk zones (hand-made, not crime data):
 
     python -m app.cli seed-zones
+
+Run the risk model for a day (needs `python -m ml.train_risk_model` first):
+
+    python -m app.cli predict-risk --date 2026-10-09
 """
 
 import argparse
 import getpass
 import sys
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from app.core.config import REPO_ROOT
 from app.core.database import SessionLocal
+from app.ml.risk_features import bin_of
 from app.models.user import Role
 from app.services import osm_import
 from app.services.audit import record_event
+from app.services.risk import predict_day
 from app.services.users import EmailAlreadyRegistered, create_user
 from app.services.zones import seed_zones
 
@@ -101,6 +108,23 @@ def seed_zones_command(path: Path) -> None:
     print(f"Risk zones from {path.name}: created {created}, updated {updated} (SYNTHETIC data).")
 
 
+def predict_risk_command(day: date | None) -> None:
+    day = day or bin_of(datetime.now(UTC))[0]
+    with SessionLocal() as db:
+        summary = predict_day(db, day)
+        record_event(
+            db,
+            "risk.predicted",
+            details={"date": str(day), "model_version": summary.model_version, "via": "cli"},
+        )
+        db.commit()
+    print(
+        f"{summary.rows_written} predictions for {day} ({summary.cells} cells x 4 bins), "
+        f"model {summary.model_version}, weather: {summary.weather_source}"
+    )
+    print(f"Levels: {summary.by_level} (relative estimates; model trained on SYNTHETIC data)")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -116,6 +140,9 @@ def main() -> None:
     zones_cmd = commands.add_parser("seed-zones", help="load the synthetic demo risk zones")
     zones_cmd.add_argument("--file", type=Path, default=DEFAULT_ZONES_FILE)
 
+    risk_cmd = commands.add_parser("predict-risk", help="run the risk model for a day")
+    risk_cmd.add_argument("--date", type=date.fromisoformat, help="YYYY-MM-DD (default: today)")
+
     args = parser.parse_args()
     if args.command == "create-admin":
         create_admin(args.email, args.name)
@@ -123,6 +150,8 @@ def main() -> None:
         import_osm(args.area, args.from_file)
     elif args.command == "seed-zones":
         seed_zones_command(args.file)
+    elif args.command == "predict-risk":
+        predict_risk_command(args.date)
 
 
 if __name__ == "__main__":

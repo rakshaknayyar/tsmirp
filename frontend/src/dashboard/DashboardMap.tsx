@@ -8,11 +8,14 @@ import { popupContent, SEVERITY_COLOURS } from "../shared/mapUtils";
 import RiskZonesLayer from "../shared/RiskZonesLayer";
 import type { Incident } from "../shared/types";
 
-export default function DashboardMap({ token, incidents }: { token: string; incidents: Incident[] }) {
+type Props = { token: string; incidents: Incident[]; zonesVersion: number };
+
+export default function DashboardMap({ token, incidents, zonesVersion }: Props) {
   const located = incidents.filter((i) => i.location !== null && i.status !== "CLOSED");
   return (
     <MapView height={380}>
-      <RiskZonesLayer token={token} />
+      {/* A new key re-loads the zones, e.g. after new risk predictions were computed. */}
+      <RiskZonesLayer key={zonesVersion} token={token} />
       {located.map((incident) => (
         <CircleMarker
           // The key includes the status so the popup is rebuilt when the status changes.

@@ -23,7 +23,7 @@ from app.core.config import settings
 from app.core.database import engine, get_db
 from app.core.rate_limit import classify_limiter, login_limiter, sos_limiter
 from app.main import app
-from app.ml import text_classifier
+from app.ml import risk_model, text_classifier
 from app.models.user import Role, User
 from app.services.users import create_user
 
@@ -87,10 +87,13 @@ def client(db: Session, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iter
     # No text model by default, so results never depend on what was trained on this machine.
     # Tests that need the model use the `text_model` fixture (test_classification.py).
     monkeypatch.setattr(settings, "text_model_dir", tmp_path / "no-model")
+    monkeypatch.setattr(settings, "risk_model_dir", tmp_path / "no-risk-model")
     text_classifier.reset_cache()
+    risk_model.reset_cache()
     with app_client(db) as test_client:
         yield test_client
     text_classifier.reset_cache()
+    risk_model.reset_cache()
 
 
 def make_user(db: Session, role: Role, name: str | None = None) -> User:

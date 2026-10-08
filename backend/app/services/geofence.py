@@ -5,7 +5,8 @@ For each location fix from a tourist (who has given consent):
 2. Store it as the tourist's LATEST location (older fixes are overwritten, not kept).
 3. Find the risk zones that contain the point (PostGIS ST_Contains) and the zones that are
    merely nearby (ST_DWithin on geography, in metres) - nearby zones never alert.
-4. Dwell/debounce, only for HIGH and CRITICAL zones:
+4. Dwell/debounce, only for zones whose EFFECTIVE level (app/services/risk.py) is HIGH or
+   CRITICAL - a fixed level for hand-drawn zones, the risk model's level for grid cells:
    - remember when the tourist entered the zone ("inside_since"); if the previous fix is
      older than settings.geofence_stale_seconds, the dwell clock starts again;
    - alert once they have been inside for settings.geofence_dwell_seconds;
@@ -30,6 +31,7 @@ from app.models.tourist import TouristProfile
 from app.models.user import User
 from app.services.audit import record_event
 from app.services.geo import geography_point
+from app.services.risk import EffectiveLevel, effective_levels
 
 
 @dataclass
@@ -39,6 +41,7 @@ class FixResult:
     inside: list[RiskZone] = field(default_factory=list)
     nearby: list[RiskZone] = field(default_factory=list)
     alerts: list[Notification] = field(default_factory=list)
+    levels: dict[int, EffectiveLevel] = field(default_factory=dict)  # by zone id
 
 
 def _point(lat: float, lon: float):
@@ -61,20 +64,19 @@ def zones_nearby(db: Session, lat: float, lon: float, metres: float) -> list[Ris
     return list(db.scalars(query.order_by(RiskZone.id)))
 
 
-def _alert(db: Session, user: User, zone: RiskZone) -> Notification:
+def _alert(db: Session, user: User, zone: RiskZone, level: EffectiveLevel) -> Notification:
     notification = Notification(
         user_id=user.id,
         channel=NotificationChannel.IN_APP,
         kind="geofence_alert",
-        title=f"Caution: {zone.base_level.value.lower()}-risk area",
+        title=f"Caution: {level.level.value.lower()}-risk area",
         body=(
-            f"You are in '{zone.name}', marked {zone.base_level.value} (a relative "
-            "decision-support estimate"
-            + (", synthetic demo data" if zone.is_synthetic else "")
-            + "). Stay alert and keep to busy, well-lit places. "
+            f"You are in '{zone.name}', marked {level.level.value} ({level.source}; a "
+            "relative decision-support estimate, not a prediction that a crime will occur). "
+            "Stay alert and keep to busy, well-lit places. "
             "Emergency: 112. Tourist helpline: 1363."
         ),
-        payload={"zone_id": zone.id, "level": zone.base_level.value},
+        payload={"zone_id": zone.id, "level": level.level.value},
         zone_id=zone.id,
         simulated=False,  # in-app notifications are real; only SMS / e-mail are sandboxed
     )
@@ -85,7 +87,7 @@ def _alert(db: Session, user: User, zone: RiskZone) -> Notification:
         actor_user_id=user.id,
         target_type="risk_zone",
         target_id=zone.id,
-        details={"level": zone.base_level.value},  # no coordinates in the audit log
+        details={"level": level.level.value},  # no coordinates in the audit log
     )
     return notification
 
@@ -120,6 +122,7 @@ def process_fix(
 
     inside = zones_containing(db, lat, lon)
     nearby = zones_nearby(db, lat, lon, settings.geofence_near_m)
+    levels = effective_levels(db, inside + nearby, now)
 
     dwell = timedelta(seconds=settings.geofence_dwell_seconds)
     cooldown = timedelta(seconds=settings.geofence_cooldown_seconds)
@@ -132,7 +135,7 @@ def process_fix(
     alerts = []
     inside_keys = set()
     for zone in inside:
-        if zone.base_level not in ALERT_LEVELS:
+        if levels[zone.id].level not in ALERT_LEVELS:
             continue
         key = str(zone.id)
         inside_keys.add(key)
@@ -146,7 +149,7 @@ def process_fix(
             now - datetime.fromisoformat(last_alert) < cooldown
         )
         if dwelled_long_enough and not cooling_down:
-            alerts.append(_alert(db, user, zone))
+            alerts.append(_alert(db, user, zone, levels[zone.id]))
             entry["alerted_at"] = now.isoformat()
 
     for key, entry in list(state.items()):
@@ -158,7 +161,7 @@ def process_fix(
 
     profile.geofence_state = state
     db.flush()
-    return FixResult(accepted=True, inside=inside, nearby=nearby, alerts=alerts)
+    return FixResult(accepted=True, inside=inside, nearby=nearby, alerts=alerts, levels=levels)
 
 
 def clear_location(profile: TouristProfile) -> None:
