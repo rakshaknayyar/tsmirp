@@ -1,11 +1,13 @@
-// Safety assistant: the tourist types a question (English, Hindi or romanised Hindi) and gets
-// an answer picked from a fixed, hand-written list (POST /assistant/query). It never makes up
-// answers, and the emergency numbers 112 and 1363 are always shown.
+// Safety assistant, shown as a short conversation. Each answer is picked from a fixed,
+// hand-written list on the server (POST /assistant/query); it never makes answers up, and the
+// emergency numbers 112 and 1363 are always shown. The conversation is not stored anywhere.
 
-import { useState } from "react";
+import { Phone, Send } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { apiRequest } from "../shared/api";
+import { Notice, Panel } from "../shared/ui";
 
 type AssistantReply = {
   topic: string | null;
@@ -16,71 +18,115 @@ type AssistantReply = {
   note: string;
 };
 
-const EXAMPLES = ["My passport is lost", "Mera phone chori ho gaya", "How does SOS work?"];
+type Exchange = { question: string; reply: AssistantReply };
+
+const SUGGESTIONS = [
+  "My passport is lost",
+  "Mera phone chori ho gaya",
+  "Someone is following me",
+  "How does SOS work?",
+  "Who can see my location?",
+];
 
 export default function AssistantPanel({ token }: { token: string }) {
   const [question, setQuestion] = useState("");
-  const [reply, setReply] = useState<AssistantReply | null>(null);
+  const [history, setHistory] = useState<Exchange[]>([]);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const endRef = useRef<HTMLDivElement>(null);
+  const id = useId();
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [history.length]);
 
   async function ask(text: string) {
+    const trimmed = text.trim();
+    if (trimmed.length < 2) return;
     setError(null);
+    setBusy(true);
     try {
-      const result = await apiRequest<AssistantReply>("POST", "/assistant/query", {
+      const reply = await apiRequest<AssistantReply>("POST", "/assistant/query", {
         token,
-        body: { question: text },
+        body: { question: trimmed },
       });
-      setReply(result);
+      setHistory((list) => [...list, { question: trimmed, reply }]);
+      setQuestion("");
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setBusy(false);
     }
   }
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (question.trim().length >= 2) ask(question);
+    void ask(question);
   }
 
   return (
-    <section>
-      <h2>Safety assistant</h2>
-      <form onSubmit={handleSubmit} style={{ display: "flex", gap: 8, maxWidth: 480 }}>
-        <input
-          style={{ flex: 1, minWidth: 0 }}
-          placeholder="Ask a safety question (English or Hindi)"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          maxLength={500}
-        />
-        <button type="submit">Ask</button>
-      </form>
-      <p style={{ fontSize: 13 }}>
-        Try:{" "}
-        {EXAMPLES.map((example) => (
-          <button
-            key={example}
-            type="button"
-            onClick={() => {
-              setQuestion(example);
-              ask(example);
-            }}
-            style={{ marginRight: 4 }}
-          >
-            {example}
+    <Panel
+      title="Safety assistant"
+      description="Ask in English, Hindi or romanised Hindi. Answers come from a fixed list written for visitors to Jaipur."
+    >
+      <div className="stack">
+        {history.length === 0 ? (
+          <div className="stack">
+            <p className="muted">Try one of these, or type your own question:</p>
+            <div className="chips">
+              {SUGGESTIONS.map((text) => (
+                <button key={text} type="button" className="chip" onClick={() => void ask(text)}>
+                  {text}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="chat" aria-live="polite">
+            {history.map(({ question: asked, reply }, index) => (
+              <div className="chat" key={index}>
+                <p className="chat-msg chat-msg-user">{asked}</p>
+                <div className="chat-msg chat-msg-bot">
+                  {reply.title && <strong>{reply.title}</strong>}
+                  <p>{reply.answer}</p>
+                  <p className="chat-emergency">
+                    <Phone aria-hidden="true" />
+                    {reply.emergency}
+                  </p>
+                </div>
+              </div>
+            ))}
+            <div ref={endRef} />
+          </div>
+        )}
+
+        {error && (
+          <Notice tone="danger" live="alert">
+            {error}
+          </Notice>
+        )}
+
+        <form className="chat-compose" onSubmit={handleSubmit}>
+          <label className="visually-hidden" htmlFor={`${id}-question`}>
+            Your question
+          </label>
+          <input
+            id={`${id}-question`}
+            className="input"
+            placeholder="Ask a safety question"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            maxLength={500}
+          />
+          <button type="submit" className="btn btn-primary" disabled={busy || question.trim().length < 2}>
+            <Send aria-hidden="true" />
+            Ask
           </button>
-        ))}
-      </p>
-      {error && <p role="alert">{error}</p>}
-      {reply && (
-        <div role="status" style={{ border: "1px solid #ccc", borderRadius: 6, padding: 8 }}>
-          {reply.title && <strong>{reply.title}</strong>}
-          <p style={{ margin: "4px 0" }}>{reply.answer}</p>
-          <p style={{ margin: "4px 0", fontWeight: "bold", color: "#c62828" }}>
-            {reply.emergency}
-          </p>
-          <p style={{ margin: 0, fontSize: 12 }}>{reply.note}</p>
-        </div>
-      )}
-    </section>
+        </form>
+        <p className="small muted">
+          General guidance only, not legal or medical advice. Your questions are not saved.
+        </p>
+      </div>
+    </Panel>
   );
 }

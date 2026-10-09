@@ -1,10 +1,16 @@
-// Digital tourist ID: a signed, time-limited credential shown as a QR code
-// (GET /tourist/credential). Staff can check it on the dashboard. It replaces the blockchain ID
-// of the problem statement, which is out of scope for this prototype.
+// Digital tourist ID: a signed, time-limited credential (GET /tourist/credential) shown as a
+// card with a QR code. The QR code is HIDDEN until the tourist chooses to show it, and hides
+// itself again after a minute, so it is not left on screen for anyone to photograph.
+// It replaces the blockchain ID of the problem statement, which is out of scope.
 
-import { useState } from "react";
+import { Eye, EyeOff, Landmark, LockKeyhole, RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { apiGet } from "../shared/api";
+import { formatDate } from "../shared/format";
+import { link } from "../shared/router";
+import type { Profile, User } from "../shared/types";
+import { Notice, Panel } from "../shared/ui";
 
 type Credential = {
   token: string;
@@ -14,42 +20,133 @@ type Credential = {
   note: string;
 };
 
-export default function CredentialPanel({ token }: { token: string }) {
+const AUTO_HIDE_SECONDS = 60;
+
+type Props = { token: string; user: User; profile: Profile | null };
+
+export default function CredentialPanel({ token, user, profile }: Props) {
   const [credential, setCredential] = useState<Credential | null>(null);
+  const [revealed, setRevealed] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function show() {
+  // Hide the QR code again after a minute.
+  useEffect(() => {
+    if (!revealed) return;
+    const timer = window.setTimeout(() => setRevealed(false), AUTO_HIDE_SECONDS * 1000);
+    return () => window.clearTimeout(timer);
+  }, [revealed, credential]);
+
+  async function fetchCredential(): Promise<boolean> {
     setError(null);
+    setBusy(true);
     try {
       setCredential(await apiGet<Credential>("/tourist/credential", token));
+      return true;
     } catch (err) {
       setError((err as Error).message);
+      return false;
+    } finally {
+      setBusy(false);
     }
   }
 
+  async function show() {
+    if (credential || (await fetchCredential())) setRevealed(true);
+  }
+
   return (
-    <section>
-      <h2>Digital tourist ID</h2>
-      <button onClick={show}>{credential ? "Get a fresh ID" : "Show my ID (QR code)"}</button>
-      {error && <p role="alert">{error}</p>}
-      {credential && (
+    <div className="stack-lg">
+      <section className="id-card" aria-label="Digital tourist ID">
         <div>
-          <img
-            // The SVG comes from our own API; as an <img> it cannot run scripts.
-            src={`data:image/svg+xml;utf8,${encodeURIComponent(credential.qr_svg)}`}
-            alt="QR code of my digital tourist ID"
-            style={{ width: 220, maxWidth: "100%", background: "#fff", display: "block" }}
-          />
-          <p style={{ margin: "4px 0" }}>
-            Valid until {new Date(credential.expires_at).toLocaleDateString()}
-          </p>
-          <p style={{ fontSize: 12, margin: 0 }}>{credential.note}</p>
-          <details style={{ fontSize: 12 }}>
-            <summary>Show the text inside the QR code</summary>
-            <code style={{ wordBreak: "break-all" }}>{credential.token}</code>
-          </details>
+          <div className="id-card-top">
+            <Landmark aria-hidden="true" />
+            Digital tourist ID, Jaipur
+          </div>
+          <p className="id-card-name">{user.full_name}</p>
+          <dl className="id-card-meta">
+            <div>
+              <dt>Nationality</dt>
+              <dd>{profile?.nationality || "Not added yet"}</dd>
+            </div>
+            <div>
+              <dt>Tourist number</dt>
+              <dd>{user.id}</dd>
+            </div>
+            <div>
+              <dt>Valid until</dt>
+              <dd>{credential ? formatDate(credential.expires_at) : "Shown with the QR code"}</dd>
+            </div>
+          </dl>
+          <div className="id-card-stripe" aria-hidden="true" />
         </div>
+
+        {revealed && credential ? (
+          <div className="stack">
+            <div className="id-qr">
+              <img
+                // The SVG comes from our own API; as an <img> it cannot run scripts.
+                src={`data:image/svg+xml;utf8,${encodeURIComponent(credential.qr_svg)}`}
+                alt="QR code of your digital tourist ID"
+              />
+            </div>
+            <button className="btn btn-on-dark-ghost btn-sm" onClick={() => setRevealed(false)}>
+              <EyeOff aria-hidden="true" />
+              Hide QR code
+            </button>
+          </div>
+        ) : (
+          <div className="id-qr id-qr-hidden">
+            <LockKeyhole aria-hidden="true" />
+            <span>Your QR code is hidden</span>
+            <button className="btn btn-on-dark btn-sm" onClick={() => void show()} disabled={busy}>
+              <Eye aria-hidden="true" />
+              {busy ? "Loading…" : "Show QR code"}
+            </button>
+          </div>
+        )}
+      </section>
+
+      {error && (
+        <Notice tone="danger" live="alert">
+          {error}
+        </Notice>
       )}
-    </section>
+
+      <Panel
+        title="About your ID"
+        description="Show the QR code when police or tourism staff ask for identification. They can check that it is genuine and not expired."
+        actions={
+          <button className="btn btn-secondary btn-sm" onClick={() => void fetchCredential()} disabled={busy}>
+            <RefreshCw aria-hidden="true" />
+            Get a new ID
+          </button>
+        }
+      >
+        <ul className="simulated-list">
+          <li>
+            <strong>What it contains</strong>
+            Your name, nationality and the dates it is valid. Never your location or phone number.
+          </li>
+          <li>
+            <strong>Hidden by default</strong>
+            The QR code hides itself again after {AUTO_HIDE_SECONDS} seconds.
+          </li>
+          <li>
+            <strong>Valid for 30 days</strong>
+            Get a new one at any time, for example after updating your{" "}
+            <a href={link("tourist", "profile")}>nationality</a>.
+          </li>
+        </ul>
+        {revealed && credential && (
+          <details className="mt-md">
+            <summary className="small">Show the text inside the QR code</summary>
+            <p className="token-box mt-xs">
+              {credential.token}
+            </p>
+          </details>
+        )}
+      </Panel>
+    </div>
   );
 }

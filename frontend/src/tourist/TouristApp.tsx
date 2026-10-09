@@ -1,68 +1,81 @@
-// Tourist app: log in, SOS, location consent + sharing with geofence alerts, map with risk
-// zones and nearby help, incident reports (English, Hindi or romanised Hindi), the safety
-// assistant, the digital tourist ID (QR code), my incidents and my notifications.
+// Tourist app. After logging in, the tourist moves between screens with the side menu (desktop)
+// or the bottom bar (phone):
+//   Safety    - SOS, location sharing with geofence alerts, map with nearby help
+//   Report    - report an incident (English, Hindi or romanised Hindi)
+//   Assistant - safety questions answered from a fixed list
+//   My ID     - the digital tourist ID (QR code, hidden until the tourist shows it)
+//   Activity  - my reports and my notifications
+//   Profile   - my details and emergency contacts
 // Status changes of my own incidents arrive live over /ws/tourist.
 
+import { Bell, FilePen, IdCard, LogOut, MessagesSquare, ShieldCheck, UserRound } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import type { FormEvent } from "react";
 
 import { apiGet, apiRequest } from "../shared/api";
+import { firstName } from "../shared/format";
 import { openLiveSocket } from "../shared/liveSocket";
 import LoginForm from "../shared/LoginForm";
-import SimulationNotice from "../shared/SimulationNotice";
+import { link } from "../shared/router";
+import { setSession, useSession } from "../shared/session";
 import type {
   AppNotification,
   Category,
+  EmergencyContact,
   FixResult,
   Incident,
   Position,
   Profile,
   Session,
 } from "../shared/types";
+import { LiveIndicator, Notice } from "../shared/ui";
+import ActivityPanel from "./ActivityPanel";
 import AssistantPanel from "./AssistantPanel";
 import CredentialPanel from "./CredentialPanel";
 import LocationPanel from "./LocationPanel";
+import ProfilePanel from "./ProfilePanel";
+import ReportPanel from "./ReportPanel";
 import SosPanel from "./SosPanel";
 import TouristMap from "./TouristMap";
 
-// Language codes returned by the API (detected from the report text).
-const LANGUAGE_NAMES: Record<string, string> = {
-  en: "English",
-  hi: "Hindi, translated with a simple word list",
-  "hi-Latn": "romanised Hindi, translated with a simple word list",
+const TABS = [
+  { id: "safety", label: "Safety", icon: ShieldCheck, inBottomBar: true },
+  { id: "report", label: "Report", icon: FilePen, inBottomBar: true },
+  { id: "assistant", label: "Assistant", icon: MessagesSquare, inBottomBar: true },
+  { id: "id", label: "My ID", icon: IdCard, inBottomBar: true },
+  { id: "activity", label: "Activity", icon: Bell, inBottomBar: true },
+  { id: "profile", label: "Profile", icon: UserRound, inBottomBar: false },
+];
+
+const SUBTITLES: Record<string, string> = {
+  safety: "Your SOS button, location alerts and help nearby.",
+  report: "Tell the control room what happened.",
+  assistant: "Quick answers to common safety questions.",
+  id: "Your digital tourist ID, for when staff ask for it.",
+  activity: "Your reports and the messages sent to you.",
+  profile: "Your details and the people to tell in an emergency.",
 };
 
-export default function TouristApp() {
-  const [session, setSession] = useState<Session | null>(null);
-
+export default function TouristApp({ tab }: { tab?: string }) {
+  const session = useSession("tourist");
   if (session === null) {
-    return (
-      <>
-        <SimulationNotice />
-        <LoginForm title="Tourist log in" allowRegister onLoggedIn={setSession} />
-      </>
-    );
+    return <LoginForm kind="tourist" onLoggedIn={(s) => setSession("tourist", s)} />;
   }
-  if (session.user.role !== "tourist") {
-    return <p>This page is for tourists. Staff should use the authority dashboard.</p>;
-  }
-  return <TouristHome session={session} onLogout={() => setSession(null)} />;
+  const current = TABS.some((t) => t.id === tab) ? tab! : "safety";
+  return <TouristHome session={session} tab={current} />;
 }
 
-function TouristHome({ session, onLogout }: { session: Session; onLogout: () => void }) {
+function TouristHome({ session, tab }: { session: Session; tab: string }) {
   const { token } = session;
   const [profile, setProfile] = useState<Profile | null>(null);
   const [position, setPosition] = useState<Position | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [description, setDescription] = useState("");
-  const [categoryCode, setCategoryCode] = useState("");
-  const [attachLocation, setAttachLocation] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [contacts, setContacts] = useState<EmergencyContact[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState(false);
 
-  const showError = (err: Error) => setMessage(err.message);
+  const showError = (err: Error) => setError(err.message);
 
   const loadLists = useCallback(() => {
     apiGet<Incident[]>("/incidents", token).then(setIncidents).catch(showError);
@@ -71,13 +84,20 @@ function TouristHome({ session, onLogout }: { session: Session; onLogout: () => 
       .catch(showError);
   }, [token]);
 
+  const loadContacts = useCallback(() => {
+    apiGet<EmergencyContact[]>("/tourist/emergency-contacts", token)
+      .then(setContacts)
+      .catch(showError);
+  }, [token]);
+
   useEffect(() => {
     apiGet<Profile>("/tourist/profile", token).then(setProfile).catch(showError);
     apiGet<Category[]>("/incident-categories", token).then(setCategories).catch(showError);
     loadLists();
-  }, [token, loadLists]);
+    loadContacts();
+  }, [token, loadLists, loadContacts]);
 
-  // Live updates about my own incidents (e.g. "your SOS was ACKNOWLEDGED").
+  // Live updates about my own incidents (e.g. "your SOS was acknowledged").
   useEffect(
     () =>
       openLiveSocket(
@@ -102,16 +122,14 @@ function TouristHome({ session, onLogout }: { session: Session; onLogout: () => 
   );
 
   async function changeConsent(consent: boolean) {
+    setError(null);
     try {
       const updated = await apiRequest<Profile>("PUT", "/tourist/consent", {
         token,
         body: { location_consent: consent },
       });
       setProfile(updated);
-      if (!consent) {
-        setPosition(null); // the server has deleted the stored location
-        setAttachLocation(false);
-      }
+      if (!consent) setPosition(null); // the server has deleted the stored location
     } catch (err) {
       showError(err as Error);
     }
@@ -122,121 +140,105 @@ function TouristHome({ session, onLogout }: { session: Session; onLogout: () => 
     if (result.alerts.length > 0) loadLists();
   }
 
-  async function handleReport(event: FormEvent) {
-    event.preventDefault();
-    setMessage(null);
-    const location =
-      attachLocation && position
-        ? { lat: position.lat, lon: position.lon, accuracy_m: position.accuracy_m }
-        : null;
-    try {
-      const created = await apiRequest<Incident>("POST", "/incidents", {
-        token,
-        body: { description, category_code: categoryCode || null, location },
-      });
-      setDescription("");
-      setCategoryCode("");
-      const how =
-        created.confidence !== null && created.category
-          ? ` Automatically classified as ${created.category.name} ` +
-            `(confidence ${Math.round(created.confidence * 100)}%).`
-          : "";
-      const language = LANGUAGE_NAMES[created.language] ?? created.language;
-      setMessage(
-        `Report sent (language: ${language}).${how} Severity: ${created.severity}. ` +
-          "An operator will see it on the dashboard and can correct it.",
-      );
-      loadLists();
-    } catch (err) {
-      showError(err as Error);
-    }
-  }
-
   const consent = profile?.location_consent ?? false;
+
+  let content;
+  if (tab === "report") {
+    content = (
+      <ReportPanel
+        token={token}
+        categories={categories}
+        consent={consent}
+        position={position}
+        onSent={loadLists}
+      />
+    );
+  } else if (tab === "assistant") {
+    content = <AssistantPanel token={token} />;
+  } else if (tab === "id") {
+    content = <CredentialPanel token={token} user={session.user} profile={profile} />;
+  } else if (tab === "activity") {
+    content = (
+      <ActivityPanel incidents={incidents} notifications={notifications} onRefresh={loadLists} />
+    );
+  } else if (tab === "profile") {
+    content = (
+      <ProfilePanel
+        token={token}
+        profile={profile}
+        onProfileSaved={setProfile}
+        contacts={contacts}
+        onContactsChanged={loadContacts}
+      />
+    );
+  } else {
+    content = (
+      <>
+        <SosPanel
+          token={token}
+          position={position}
+          incidents={incidents}
+          contactCount={contacts.length}
+          onChanged={loadLists}
+        />
+        <LocationPanel
+          token={token}
+          consent={consent}
+          onConsentChange={changeConsent}
+          onShared={handleShared}
+        />
+        <TouristMap token={token} position={position} />
+      </>
+    );
+  }
 
   return (
     <>
-      <SimulationNotice />
-      <p>
-        Logged in as {session.user.full_name} - live updates: {live ? "on" : "reconnecting"}{" "}
-        <button onClick={onLogout}>Log out</button>
-      </p>
+      <div className="app-header">
+        <div>
+          <h1>Hello, {firstName(session.user.full_name)}</h1>
+          <p>{SUBTITLES[tab]}</p>
+        </div>
+        <div className="row">
+          <LiveIndicator connected={live} />
+          <a className="btn btn-ghost btn-sm" href={link("tourist", "profile")}>
+            <UserRound aria-hidden="true" />
+            Profile
+          </a>
+          <button className="btn btn-secondary btn-sm" onClick={() => setSession("tourist", null)}>
+            <LogOut aria-hidden="true" />
+            Log out
+          </button>
+        </div>
+      </div>
 
-      <SosPanel token={token} position={position} incidents={incidents} onChanged={loadLists} />
-
-      <LocationPanel
-        token={token}
-        consent={consent}
-        onConsentChange={changeConsent}
-        onShared={handleShared}
-      />
-      <TouristMap token={token} position={position} />
-
-      <h2>Report an incident</h2>
-      <form onSubmit={handleReport} style={{ display: "grid", gap: 8, maxWidth: 480 }}>
-        <select value={categoryCode} onChange={(e) => setCategoryCode(e.target.value)}>
-          <option value="">Category (optional - not sure)</option>
-          {categories.map((c) => (
-            <option key={c.code} value={c.code}>
-              {c.name}
-            </option>
+      <div className="with-sidebar">
+        <nav className="side-nav" aria-label="Tourist app">
+          {TABS.map(({ id, label, icon: Icon }) => (
+            <a key={id} href={link("tourist", id)} aria-current={tab === id ? "page" : undefined}>
+              <Icon aria-hidden="true" />
+              {label}
+            </a>
           ))}
-        </select>
-        <textarea
-          placeholder="What happened? English, Hindi or romanised Hindi (at least 5 characters)"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          minLength={5}
-          maxLength={2000}
-          rows={4}
-          required
-        />
-        <label>
-          <input
-            type="checkbox"
-            checked={attachLocation}
-            disabled={!consent || position === null}
-            onChange={(e) => setAttachLocation(e.target.checked)}
-          />{" "}
-          Attach my last shared location
-          {(!consent || position === null) && " (share your location first)"}
-        </label>
-        <button type="submit">Send report</button>
-      </form>
-      {message && <p role="status">{message}</p>}
+        </nav>
+        <div className="stack-lg">
+          {error && (
+            <Notice tone="danger" live="alert">
+              {error}
+            </Notice>
+          )}
+          {content}
+        </div>
+      </div>
 
-      <AssistantPanel token={token} />
-
-      <CredentialPanel token={token} />
-
-      <h2>My incidents</h2>
-      {incidents.length === 0 ? (
-        <p>No reports yet.</p>
-      ) : (
-        <ul>
-          {incidents.map((incident) => (
-            <li key={incident.id}>
-              #{incident.id}{" "}
-              {incident.is_sos ? "SOS" : (incident.category?.name ?? "Uncategorised")} -{" "}
-              {incident.status} - {incident.description}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <h2>My notifications</h2>
-      {notifications.length === 0 ? (
-        <p>None.</p>
-      ) : (
-        <ul>
-          {notifications.map((n) => (
-            <li key={n.id}>
-              {new Date(n.created_at).toLocaleString()} - <strong>{n.title}</strong>: {n.body}
-            </li>
-          ))}
-        </ul>
-      )}
-      <button onClick={loadLists}>Refresh</button>
+      <nav className="bottom-nav" aria-label="Tourist app">
+        {TABS.filter((t) => t.inBottomBar).map(({ id, label, icon: Icon }) => (
+          <a key={id} href={link("tourist", id)} aria-current={tab === id ? "page" : undefined}>
+            <Icon aria-hidden="true" />
+            {label}
+          </a>
+        ))}
+      </nav>
     </>
   );
 }

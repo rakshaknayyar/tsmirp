@@ -1,98 +1,157 @@
-// Top-level page. A tiny "router" based on the part of the URL after #:
-//   #/tourist   -> tourist app
-//   #/dashboard -> authority dashboard
-//   anything else -> home page with links and system health
+// App shell: the header (brand, main navigation, light/dark switch), the prototype notice, the
+// current page, and the footer. The header is on every page, so you can always get back to the
+// home page, the tourist app or the authority dashboard.
 
-import { useEffect, useState } from "react";
+import { Building2, Compass, House, Monitor, Moon, Sun } from "lucide-react";
+import { useEffect } from "react";
+import type { MouseEvent } from "react";
 
 import DashboardApp from "./dashboard/DashboardApp";
-import { apiGet } from "./shared/api";
+import Home from "./home/Home";
+import { link, useRoute } from "./shared/router";
 import SimulationNotice from "./shared/SimulationNotice";
+import { useTheme } from "./shared/theme";
+import type { ThemePreference } from "./shared/theme";
 import TouristApp from "./tourist/TouristApp";
 
-type Health = {
-  status: string;
-  api: string;
-  database: { status: string; postgis_version?: string | null; error?: string };
-  redis: { status: string; error?: string };
-};
+const NAV: { section: string; label: string; short?: string; icon: typeof House }[] = [
+  { section: "", label: "Home", icon: House },
+  { section: "tourist", label: "Tourist app", icon: Compass },
+  { section: "dashboard", label: "Authority dashboard", short: "Dashboard", icon: Building2 },
+];
 
-function useHashRoute(): string {
-  const [hash, setHash] = useState(window.location.hash);
-  useEffect(() => {
-    const onChange = () => setHash(window.location.hash);
-    window.addEventListener("hashchange", onChange);
-    return () => window.removeEventListener("hashchange", onChange);
-  }, []);
-  return hash;
-}
+const THEMES: { value: ThemePreference; label: string; icon: typeof Sun }[] = [
+  { value: "light", label: "Light theme", icon: Sun },
+  { value: "system", label: "Use system theme", icon: Monitor },
+  { value: "dark", label: "Dark theme", icon: Moon },
+];
 
-export default function App() {
-  const route = useHashRoute();
-
-  let page;
-  if (route === "#/tourist") page = <TouristApp />;
-  else if (route === "#/dashboard") page = <DashboardApp />;
-  else page = <Home />;
-
+function BrandMark() {
+  // A jharokha arch, the window shape found all over Jaipur's palaces.
   return (
-    <main
-      style={{
-        fontFamily: "system-ui, sans-serif",
-        maxWidth: 1100,
-        margin: "1.5rem auto",
-        padding: "0 16px",
-      }}
-    >
-      <h1>
-        <a href="#/" style={{ color: "inherit", textDecoration: "none" }}>
-          TSMIRP
-        </a>
-      </h1>
-      {page}
-    </main>
+    <svg className="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+      <path
+        d="M6 29V14Q6 5 16 3q10 2 10 11v15"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M11 29V17q0-5 5-6.5q5 1.5 5 6.5v12"
+        fill="currentColor"
+        fillOpacity="0.18"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path d="M3 29h26" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
   );
 }
 
-function Home() {
-  const [health, setHealth] = useState<Health | null>(null);
-  const [error, setError] = useState<string | null>(null);
+function ThemeSwitch() {
+  const [preference, setPreference] = useTheme();
+  return (
+    <div className="theme-switch" role="group" aria-label="Colour theme">
+      {THEMES.map(({ value, label, icon: Icon }) => (
+        <button
+          key={value}
+          type="button"
+          aria-pressed={preference === value}
+          aria-label={label}
+          title={label}
+          onClick={() => setPreference(value)}
+        >
+          <Icon aria-hidden="true" />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// The router uses the "#" part of the URL, so the skip link moves focus itself.
+function skipToContent(event: MouseEvent<HTMLAnchorElement>) {
+  event.preventDefault();
+  document.getElementById("content")?.focus();
+}
+
+export default function App() {
+  const [section = "", tab] = useRoute();
 
   useEffect(() => {
-    apiGet<Health>("/health")
-      .then(setHealth)
-      .catch((err: Error) => setError(err.message));
-  }, []);
+    const page = NAV.find((item) => item.section === section)?.label ?? "Home";
+    document.title = section ? `${page} | TSMIRP` : "TSMIRP | Tourist safety in Jaipur";
+  }, [section]);
+
+  let page;
+  if (section === "tourist") page = <TouristApp tab={tab} />;
+  else if (section === "dashboard") page = <DashboardApp tab={tab} />;
+  else page = <Home />;
 
   return (
     <>
-      <p>Tourist Safety Monitoring and Incident Response Platform (SIH25002 prototype).</p>
+      <a className="skip-link" href="#content" onClick={skipToContent}>
+        Skip to content
+      </a>
+      <header className="topbar">
+        <div className="topbar-inner">
+          <a className="brand" href={link()}>
+            <BrandMark />
+            <span>
+              <span className="brand-name">TSMIRP</span>
+              <span className="brand-tag">Tourist safety, Jaipur</span>
+            </span>
+          </a>
+          <nav className="main-nav" aria-label="Main">
+            {NAV.map(({ section: target, label, short, icon: Icon }) => (
+              <a
+                key={label}
+                href={target ? link(target) : link()}
+                aria-current={section === target ? "page" : undefined}
+                aria-label={short ? label : undefined}
+              >
+                <Icon aria-hidden="true" />
+                {short ? (
+                  <>
+                    <span className="nav-long">{label}</span>
+                    <span className="nav-short" aria-hidden="true">
+                      {short}
+                    </span>
+                  </>
+                ) : (
+                  label
+                )}
+              </a>
+            ))}
+          </nav>
+          <ThemeSwitch />
+        </div>
+      </header>
       <SimulationNotice />
 
-      <h2>Apps</h2>
-      <ul>
-        <li>
-          <a href="#/tourist">Tourist app</a>
-        </li>
-        <li>
-          <a href="#/dashboard">Authority dashboard</a>
-        </li>
-      </ul>
+      <main
+        id="content"
+        tabIndex={-1}
+        className={section === "tourist" ? "page has-bottom-nav" : "page"}
+      >
+        {page}
+      </main>
 
-      <h2>System health</h2>
-      {error && <p>Could not reach the API: {error}</p>}
-      {!error && !health && <p>Checking...</p>}
-      {health && (
-        <ul>
-          <li>Overall: {health.status}</li>
-          <li>API: {health.api}</li>
-          <li>
-            Database: {health.database.status}
-            {health.database.postgis_version && ` (PostGIS ${health.database.postgis_version})`}
-          </li>
-          <li>Redis: {health.redis.status}</li>
-        </ul>
-      )}
+      <footer className="site-footer">
+        <div className="site-footer-inner">
+          <span>
+            TSMIRP, a decision-support prototype for SIH25002. Not a replacement for emergency
+            services.
+          </span>
+          <span>
+            Map data &copy;{" "}
+            <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
+              OpenStreetMap
+            </a>{" "}
+            contributors (ODbL)
+          </span>
+        </div>
+      </footer>
     </>
   );
 }

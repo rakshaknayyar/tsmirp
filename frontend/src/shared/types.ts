@@ -107,6 +107,9 @@ export type SosResponse = {
 
 export const SEVERITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 
-export type Session = { token: string; user: User };
+// token = short-lived access token; refreshToken renews it (see shared/session.ts).
+export type Session = { token: string; refreshToken: string; user: User };
+
+export type EmergencyContact = { id: number; name: string; phone: string; relation: string | null };
 
 export const STAFF_ROLES: Role[] = ["operator", "supervisor", "administrator"];

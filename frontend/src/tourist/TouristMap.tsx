@@ -1,13 +1,23 @@
-// Tourist map: risk zones, "you are here", and the nearest police stations and hospitals.
+// Tourist map: risk zones, "you are here", and the nearest police stations and hospitals,
+// with the same places listed underneath (easier to read on a phone than map pins).
 
+import { Hospital, MapPinOff, ShieldHalf } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Circle, CircleMarker, Popup, useMap } from "react-leaflet";
 
 import { apiGet } from "../shared/api";
+import MapLegend from "../shared/MapLegend";
 import MapView from "../shared/MapView";
-import { formatDistance, popupContent } from "../shared/mapUtils";
+import {
+  formatDistance,
+  HOSPITAL_COLOUR,
+  POLICE_COLOUR,
+  popupContent,
+  YOU_COLOUR,
+} from "../shared/mapUtils";
 import RiskZonesLayer from "../shared/RiskZonesLayer";
 import type { NearbyResource, Position } from "../shared/types";
+import { EmptyState, Panel } from "../shared/ui";
 
 // Moves the map to the tourist's position whenever it changes.
 function FollowPosition({ position }: { position: Position }) {
@@ -22,7 +32,10 @@ export default function TouristMap({ token, position }: { token: string; positio
   const [help, setHelp] = useState<NearbyResource[]>([]);
 
   useEffect(() => {
-    if (!position) return;
+    if (!position) {
+      setHelp([]);
+      return;
+    }
     const where = `lat=${position.lat}&lon=${position.lon}&k=3`;
     Promise.all([
       apiGet<NearbyResource[]>(`/nearby-resources?${where}&type=police_station`, token),
@@ -33,8 +46,11 @@ export default function TouristMap({ token, position }: { token: string; positio
   }, [token, position]);
 
   return (
-    <>
-      <MapView>
+    <Panel
+      title="Map and help nearby"
+      description="Coloured areas show relative risk levels. Distances are straight-line, so the walk or drive will be longer."
+    >
+      <MapView label="Map of risk zones and nearby help" height={400}>
         <RiskZonesLayer token={token} />
         {position && (
           <>
@@ -42,12 +58,12 @@ export default function TouristMap({ token, position }: { token: string; positio
             <Circle
               center={[position.lat, position.lon]}
               radius={position.accuracy_m}
-              pathOptions={{ color: "#1565c0", weight: 1, fillOpacity: 0.1 }}
+              pathOptions={{ color: YOU_COLOUR, weight: 1, fillOpacity: 0.12 }}
             />
             <CircleMarker
               center={[position.lat, position.lon]}
-              radius={8}
-              pathOptions={{ color: "#fff", fillColor: "#1565c0", fillOpacity: 1, weight: 2 }}
+              radius={9}
+              pathOptions={{ color: "#fff", fillColor: YOU_COLOUR, fillOpacity: 1, weight: 3 }}
             >
               <Popup>{position.simulated ? "You (demo position)" : "You are here"}</Popup>
             </CircleMarker>
@@ -57,14 +73,19 @@ export default function TouristMap({ token, position }: { token: string; positio
           <CircleMarker
             key={r.id}
             center={[r.lat, r.lon]}
-            radius={6}
-            pathOptions={{ color: r.resource_type === "hospital" ? "#c62828" : "#283593" }}
+            radius={7}
+            pathOptions={{
+              color: "#fff",
+              weight: 2,
+              fillOpacity: 1,
+              fillColor: r.resource_type === "hospital" ? HOSPITAL_COLOUR : POLICE_COLOUR,
+            }}
             eventHandlers={{
               add: (e) =>
                 e.target.bindPopup(
                   popupContent([
                     r.name,
-                    r.resource_type.replace("_", " "),
+                    r.resource_type === "hospital" ? "Hospital" : "Police station",
                     `${formatDistance(r.distance_m)} straight-line`,
                   ]),
                 ),
@@ -72,20 +93,45 @@ export default function TouristMap({ token, position }: { token: string; positio
           />
         ))}
       </MapView>
-      {help.length > 0 && (
-        <>
-          <h3>Nearest help (straight-line distance; the route will be longer)</h3>
-          <ul>
+      <MapLegend
+        extras={[
+          { label: "You", colour: YOU_COLOUR, round: true },
+          { label: "Police", colour: POLICE_COLOUR, round: true },
+          { label: "Hospital", colour: HOSPITAL_COLOUR, round: true },
+        ]}
+      />
+
+      <div className="mt-md">
+        {help.length === 0 ? (
+          <EmptyState icon={<MapPinOff aria-hidden="true" />} title="No position shared yet">
+            Share your location above to see the nearest police stations and hospitals.
+          </EmptyState>
+        ) : (
+          <ul className="list">
             {help.map((r) => (
-              <li key={r.id}>
-                {r.resource_type === "hospital" ? "Hospital" : "Police"}: {r.name} -{" "}
-                {formatDistance(r.distance_m)}
+              <li className="list-item" key={r.id}>
+                <span className="list-item-icon">
+                  {r.resource_type === "hospital" ? (
+                    <Hospital aria-hidden="true" />
+                  ) : (
+                    <ShieldHalf aria-hidden="true" />
+                  )}
+                </span>
+                <span className="list-item-main">
+                  <span className="list-item-title">{r.name}</span>
+                  <span className="list-item-sub">
+                    {r.resource_type === "hospital" ? "Hospital" : "Police station"}
+                  </span>
+                </span>
+                <span className="nowrap">{formatDistance(r.distance_m)}</span>
               </li>
             ))}
           </ul>
-          <p style={{ fontSize: 12 }}>Locations from OpenStreetMap contributors (ODbL).</p>
-        </>
-      )}
-    </>
+        )}
+        <p className="small muted mt-sm">
+          Places from OpenStreetMap contributors (ODbL).
+        </p>
+      </div>
+    </Panel>
   );
 }

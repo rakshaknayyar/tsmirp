@@ -1,0 +1,210 @@
+/*
+  Design tokens and base styles.
+
+  Theme: "Jaipur blue pottery" - cobalt on cool porcelain, turquoise glaze, marigold highlights.
+  Sindoor red is reserved for emergencies (SOS, critical). Dark mode is "Amer at night".
+  The theme is chosen by data-theme="light|dark" on <html> (see src/shared/theme.ts).
+*/
+
+:root {
+  color-scheme: light;
+
+  --font-body: "Mukta", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Rozha One", Georgia, "Times New Roman", serif;
+
+  --bg: #f3f6fb;
+  --surface: #ffffff;
+  --surface-sunken: #edf2f9;
+  --border: #d6dfeb;
+  --border-strong: #b5c3d8;
+
+  --text: #13213a;
+  --text-muted: #4f5e78;
+  --text-subtle: #67758f;
+
+  --primary: #1f4fa3; /* cobalt */
+  --primary-hover: #183f84;
+  --primary-soft: #e2ebf9;
+  --on-primary: #ffffff;
+
+  --accent: #0b7f7c; /* turquoise glaze */
+  --accent-soft: #daf1ef;
+  --marigold: #c98612;
+  --marigold-soft: #fbefd6;
+
+  --danger: #b3242b; /* sindoor: emergencies only */
+  --danger-solid: #b3242b;
+  --danger-hover: #951c22;
+  --danger-soft: #fbe7e7;
+  --success: #1d7349;
+  --success-soft: #def2e7;
+  --warning: #8f5400;
+  --warning-soft: #fdf0d6;
+
+  --focus: #2f6fe0;
+  --overlay-shadow: 0 18px 40px -18px rgb(19 33 58 / 0.35);
+
+  /* Hawa Mahal illustration */
+  --art-stone: #e4ecf8;
+  --art-line: #1f4fa3;
+  --art-window: #ffffff;
+  --art-lit: #f6d27a;
+  --art-sun: #f8dd98;
+
+  --radius-xl: 22px;
+  --radius-lg: 16px;
+  --radius-md: 10px;
+  --radius-sm: 6px;
+  --radius-pill: 999px;
+
+  --header-height: 64px;
+  --content-width: 1180px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0a1120;
+  --surface: #101a2d;
+  --surface-sunken: #0c1527;
+  --border: #22314d;
+  --border-strong: #34476b;
+
+  --text: #e6ecf6;
+  --text-muted: #a4b1c8;
+  --text-subtle: #8494ae;
+
+  --primary: #8aaef6;
+  --primary-hover: #aac5f9;
+  --primary-soft: #182a4c;
+  --on-primary: #0a1120;
+
+  --accent: #4cc7c0;
+  --accent-soft: #10302f;
+  --marigold: #f1b650;
+  --marigold-soft: #33280e;
+
+  --danger: #f2858a;
+  --danger-solid: #cf3139;
+  --danger-hover: #e04149;
+  --danger-soft: #3a171a;
+  --success: #6fd3a1;
+  --success-soft: #11301f;
+  --warning: #f3c06a;
+  --warning-soft: #33260c;
+
+  --focus: #8aaef6;
+  --overlay-shadow: 0 18px 40px -18px rgb(0 0 0 / 0.7);
+
+  --art-stone: #14223d;
+  --art-line: #7fa3ef;
+  --art-window: #0c1527;
+  --art-lit: #f1b650;
+  --art-sun: #2b3c60;
+}
+
+/* ---------- base ---------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  line-height: 1.2;
+  font-weight: 700;
+  color: var(--text);
+}
+
+h1 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(1.9rem, 3vw, 2.4rem);
+  letter-spacing: 0.005em;
+}
+
+h2 {
+  font-size: 1.25rem;
+}
+
+h3 {
+  font-size: 1.05rem;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--primary);
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  color: var(--primary-hover);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--primary-soft);
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,55 +1,45 @@
-// Authority dashboard: map, live geofence alerts, live incident list, status buttons,
-// operator overrides of the automatic category / severity (every override is audited),
-// analytics (plain counts) and a checker for digital tourist IDs.
+// Authority dashboard ("control room"), with three tabs:
+//   Operations - active SOS banner, risk map, live geofence alerts, incident list with status
+//                buttons, category / severity overrides and simulated dispatch
+//   Analytics  - plain incident counts
+//   Verify ID  - check a tourist's digital ID
 // New incidents, status changes and geofence alerts arrive over the WebSocket without
-// refreshing the page.
+// refreshing the page; the data is kept while switching tabs.
 
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { BarChart3, LayoutDashboard, LogOut, ScanLine } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
-import { apiGet, apiRequest } from "../shared/api";
+import { apiGet } from "../shared/api";
 import { openLiveSocket } from "../shared/liveSocket";
 import LoginForm from "../shared/LoginForm";
-import SimulationNotice from "../shared/SimulationNotice";
-import { SEVERITIES, STAFF_ROLES } from "../shared/types";
-import type { Category, Incident, IncidentStatus, Session } from "../shared/types";
+import { link } from "../shared/router";
+import { setSession, useSession } from "../shared/session";
+import type { Category, Incident, Session } from "../shared/types";
+import { LiveIndicator, Notice } from "../shared/ui";
 import AnalyticsPanel from "./AnalyticsPanel";
 import CredentialCheck from "./CredentialCheck";
-import DashboardMap from "./DashboardMap";
-import ResourcePicker from "./ResourcePicker";
+import OperationsView from "./OperationsView";
+import type { GeofenceAlert } from "./OperationsView";
 
-// Buttons offered for each status. Mirrors the backend lifecycle, except ASSIGNED, which is
-// set by assigning a resource (the "Recommend resources" button).
-const NEXT_STATUSES: Record<IncidentStatus, IncidentStatus[]> = {
-  NEW: ["ACKNOWLEDGED"],
-  ACKNOWLEDGED: ["RESOLVED"],
-  ASSIGNED: ["EN_ROUTE", "RESOLVED"],
-  EN_ROUTE: ["RESOLVED"],
-  RESOLVED: ["CLOSED", "ACKNOWLEDGED"],
-  CLOSED: [],
+const TABS = [
+  { id: "operations", label: "Operations", icon: LayoutDashboard },
+  { id: "analytics", label: "Analytics", icon: BarChart3 },
+  { id: "verify", label: "Verify ID", icon: ScanLine },
+];
+
+const ROLE_LABELS: Record<string, string> = {
+  operator: "Operator",
+  supervisor: "Supervisor",
+  administrator: "Administrator",
 };
 
-type GeofenceAlert = {
-  type: "geofence.alert";
-  tourist_user_id: number;
-  zone: { id: number; name: string; level: string };
-  at: string;
-};
-
-export default function DashboardApp() {
-  const [session, setSession] = useState<Session | null>(null);
-
+export default function DashboardApp({ tab }: { tab?: string }) {
+  const session = useSession("staff");
   if (session === null) {
-    return (
-      <>
-        <SimulationNotice />
-        <LoginForm title="Authority dashboard log in" onLoggedIn={setSession} />
-      </>
-    );
+    return <LoginForm kind="staff" onLoggedIn={(s) => setSession("staff", s)} />;
   }
-  if (!STAFF_ROLES.includes(session.user.role)) {
-    return <p>The dashboard is for operators, supervisors and administrators.</p>;
-  }
-  return <LiveIncidentList session={session} onLogout={() => setSession(null)} />;
+  const current = TABS.some((t) => t.id === tab) ? tab! : "operations";
+  return <ControlRoom session={session} tab={current} />;
 }
 
 // Put an incident into the list: replace it if we have it, otherwise add it at the top.
@@ -58,15 +48,13 @@ function upsert(list: Incident[], incident: Incident): Incident[] {
   return exists ? list.map((i) => (i.id === incident.id ? incident : i)) : [incident, ...list];
 }
 
-function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: () => void }) {
+function ControlRoom({ session, tab }: { session: Session; tab: string }) {
+  const { token } = session;
   const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [liveMode, setLiveMode] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [pickerFor, setPickerFor] = useState<number | null>(null); // incident id
-  const [alerts, setAlerts] = useState<GeofenceAlert[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [zonesVersion, setZonesVersion] = useState(0);
-  const [riskMessage, setRiskMessage] = useState<string | null>(null);
+  const [alerts, setAlerts] = useState<GeofenceAlert[]>([]);
+  const [connected, setConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [changes, setChanges] = useState(0); // counts incident updates, to refresh analytics
 
   // Put a new or changed incident into the list, and let the analytics count again.
@@ -76,257 +64,76 @@ function LiveIncidentList({ session, onLogout }: { session: Session; onLogout: (
   }, []);
 
   useEffect(() => {
-    apiGet<Incident[]>("/incidents", session.token)
+    apiGet<Incident[]>("/incidents?limit=200", token)
       .then(setIncidents)
       .catch((err: Error) => setError(err.message));
-    apiGet<Category[]>("/incident-categories", session.token)
+    apiGet<Category[]>("/incident-categories", token)
       .then(setCategories)
       .catch((err: Error) => setError(err.message));
-  }, [session.token]);
+  }, [token]);
 
   useEffect(
     () =>
       openLiveSocket(
         "/ws/dashboard",
-        session.token,
+        token,
         (event) => {
           if (event.type === "geofence.alert") {
-            setAlerts((list) => [event as GeofenceAlert, ...list].slice(0, 10));
+            setAlerts((list) => [event as GeofenceAlert, ...list].slice(0, 20));
           } else if ("incident" in event) {
             applyUpdate(event.incident as Incident);
           }
         },
-        (status) => setLiveMode(status.mode),
+        (status) => setConnected(status.connected),
       ),
-    [session.token, applyUpdate],
+    [token, applyUpdate],
   );
-
-  const changeStatus = useCallback(
-    async (incident: Incident, status: IncidentStatus) => {
-      setError(null);
-      try {
-        const updated = await apiRequest<Incident>("PATCH", `/incidents/${incident.id}/status`, {
-          token: session.token,
-          body: { status },
-        });
-        applyUpdate(updated);
-      } catch (err) {
-        setError((err as Error).message);
-      }
-    },
-    [session.token, applyUpdate],
-  );
-
-  // Operator override of category and/or severity (PATCH /incidents/{id}).
-  const override = useCallback(
-    async (incident: Incident, change: { category_code?: string; severity?: string }) => {
-      setError(null);
-      try {
-        const updated = await apiRequest<Incident>("PATCH", `/incidents/${incident.id}`, {
-          token: session.token,
-          body: change,
-        });
-        applyUpdate(updated);
-      } catch (err) {
-        setError((err as Error).message);
-      }
-    },
-    [session.token, applyUpdate],
-  );
-
-  // Run the risk model for today (POST /risk/predict) and redraw the map.
-  async function computeRisk() {
-    setRiskMessage("Computing...");
-    try {
-      const result = await apiRequest<{
-        model_version: string;
-        rows_written: number;
-        by_level: Record<string, number>;
-        weather_source: string;
-      }>("POST", "/risk/predict", { token: session.token, body: {} });
-      const levels = Object.entries(result.by_level)
-        .map(([level, n]) => `${level} ${n}`)
-        .join(", ");
-      setRiskMessage(
-        `${result.rows_written} cell-periods scored by ${result.model_version} ` +
-          `(weather: ${result.weather_source}): ${levels}. Relative estimates from a model ` +
-          "trained on synthetic data.",
-      );
-      setZonesVersion((v) => v + 1);
-    } catch (err) {
-      setRiskMessage((err as Error).message);
-    }
-  }
 
   return (
     <>
-      <SimulationNotice />
-      <p>
-        {session.user.full_name} ({session.user.role}) - live updates:{" "}
-        <strong>{liveMode ? `connected (${liveMode})` : "disconnected, retrying"}</strong>{" "}
-        <button onClick={onLogout}>Log out</button>
-      </p>
-      {error && <p role="alert">{error}</p>}
-
-      <ActiveSosBanner incidents={incidents} />
-
-      <p>
-        <button onClick={computeRisk}>Compute today's risk levels</button>{" "}
-        {riskMessage && <span role="status">{riskMessage}</span>}
-      </p>
-      <DashboardMap token={session.token} incidents={incidents} zonesVersion={zonesVersion} />
-
-      <h2>Geofence alerts (live)</h2>
-      {alerts.length === 0 ? (
-        <p>None since you logged in.</p>
-      ) : (
-        <ul>
-          {alerts.map((a) => (
-            <li key={`${a.at}-${a.tourist_user_id}-${a.zone.id}`}>
-              {new Date(a.at).toLocaleTimeString()} - tourist #{a.tourist_user_id} has stayed in{" "}
-              {a.zone.name} ({a.zone.level})
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <h2>Incidents</h2>
-      {/* The table scrolls sideways inside this box on narrow screens, not the whole page. */}
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
-          <thead>
-            <tr style={{ textAlign: "left" }}>
-              <th>#</th>
-              <th>Reported</th>
-              <th>Category</th>
-              <th>Department</th>
-              <th>Severity</th>
-              <th>Status</th>
-              <th>Description</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {incidents.map((incident) => (
-              <Fragment key={incident.id}>
-                <tr style={{ borderTop: "1px solid #ddd" }}>
-                  <td>{incident.id}</td>
-                  <td>{new Date(incident.created_at).toLocaleString()}</td>
-                  <td>
-                    <select
-                      aria-label={`Category of incident ${incident.id}`}
-                      value={incident.category?.code ?? ""}
-                      onChange={(e) => override(incident, { category_code: e.target.value })}
-                    >
-                      {!incident.category && <option value="">Uncategorised</option>}
-                      {categories.map((c) => (
-                        <option key={c.code} value={c.code}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                    {incident.needs_review && (
-                      <strong style={{ color: "#ef6c00" }} title="Check the category">
-                        {" "}
-                        needs review
-                      </strong>
-                    )}
-                    {incident.confidence !== null && (
-                      <div style={{ fontSize: 12 }}>
-                        auto, confidence {Math.round(incident.confidence * 100)}%
-                      </div>
-                    )}
-                  </td>
-                  <td>{incident.category?.department ?? "-"}</td>
-                  <td>
-                    <select
-                      aria-label={`Severity of incident ${incident.id}`}
-                      value={incident.severity}
-                      onChange={(e) => override(incident, { severity: e.target.value })}
-                    >
-                      {SEVERITIES.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                    {incident.is_sos && <strong style={{ color: "#c62828" }}> (SOS)</strong>}
-                  </td>
-                  <td>{incident.status}</td>
-                  <td>{incident.description}</td>
-                  <td>
-                    {NEXT_STATUSES[incident.status].map((next) => (
-                      <button key={next} onClick={() => changeStatus(incident, next)}>
-                        {next}
-                      </button>
-                    ))}
-                    {incident.status === "ACKNOWLEDGED" && incident.location && (
-                      <button onClick={() => setPickerFor(incident.id)}>Recommend resources</button>
-                    )}
-                  </td>
-                </tr>
-                {pickerFor === incident.id && (
-                  <tr>
-                    <td colSpan={8}>
-                      <ResourcePicker
-                        incident={incident}
-                        token={session.token}
-                        onAssigned={(updated) => {
-                          applyUpdate(updated);
-                          setPickerFor(null);
-                        }}
-                        onClose={() => setPickerFor(null)}
-                      />
-                    </td>
-                  </tr>
-                )}
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
+      <div className="app-header">
+        <div>
+          <h1>Control room</h1>
+          <p>
+            Signed in as {session.user.full_name}, {ROLE_LABELS[session.user.role] ?? session.user.role}
+          </p>
+        </div>
+        <div className="row">
+          <LiveIndicator connected={connected} />
+          <button className="btn btn-secondary btn-sm" onClick={() => setSession("staff", null)}>
+            <LogOut aria-hidden="true" />
+            Log out
+          </button>
+        </div>
       </div>
-      {incidents.length === 0 && <p>No incidents yet.</p>}
 
-      {/* Counts again whenever an incident is added or changes. */}
-      <AnalyticsPanel token={session.token} refreshKey={changes} />
-
-      <CredentialCheck token={session.token} />
-    </>
-  );
-}
-
-// Red banner listing every SOS that is still open, so it cannot be missed.
-function ActiveSosBanner({ incidents }: { incidents: Incident[] }) {
-  const open = incidents.filter(
-    (i) => i.is_sos && i.status !== "RESOLVED" && i.status !== "CLOSED",
-  );
-  if (open.length === 0) return null;
-  return (
-    <div
-      role="alert"
-      style={{
-        background: "#c62828",
-        color: "#fff",
-        padding: "8px 12px",
-        borderRadius: 6,
-        margin: "8px 0",
-      }}
-    >
-      <strong>
-        {open.length} active SOS{open.length > 1 ? " alerts" : ""}
-      </strong>
-      <ul style={{ margin: "4px 0" }}>
-        {open.map((i) => (
-          <li key={i.id}>
-            SOS #{i.id} from tourist #{i.reporter_user_id} - {i.status} -{" "}
-            {i.location
-              ? `at ${i.location.lat.toFixed(5)}, ${i.location.lon.toFixed(5)}`
-              : "location unknown"}{" "}
-            - {new Date(i.created_at).toLocaleTimeString()}
-          </li>
+      <nav className="tabs" aria-label="Dashboard">
+        {TABS.map(({ id, label, icon: Icon }) => (
+          <a key={id} href={link("dashboard", id)} aria-current={tab === id ? "page" : undefined}>
+            <Icon aria-hidden="true" />
+            {label}
+          </a>
         ))}
-      </ul>
-      Acknowledge it below, then use "Recommend resources" to assign (simulated dispatch).
-    </div>
+      </nav>
+
+      <div className="stack-lg">
+        {error && (
+          <Notice tone="danger" live="alert">
+            {error}
+          </Notice>
+        )}
+        {tab === "analytics" && <AnalyticsPanel token={token} refreshKey={changes} />}
+        {tab === "verify" && <CredentialCheck token={token} />}
+        {tab === "operations" && (
+          <OperationsView
+            token={token}
+            incidents={incidents}
+            categories={categories}
+            alerts={alerts}
+            onIncidentChanged={applyUpdate}
+          />
+        )}
+      </div>
+    </>
   );
 }

@@ -1,9 +1,15 @@
-// Dashboard analytics: plain incident counts from GET /analytics/summary (no estimates),
-// shown as small tables so every number can be checked against the incident list.
+// Dashboard analytics: plain incident counts from GET /analytics/summary (no estimates).
+// Four headline numbers, then each breakdown as a labelled bar list: one colour for all bars
+// (they show amounts, not categories), and the exact number written next to every bar, so the
+// list doubles as a table.
 
-import { useCallback, useEffect, useState } from "react";
+import { RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useId, useState } from "react";
 
 import { apiGet } from "../shared/api";
+import { LANGUAGE_NAMES, SEVERITY_LABELS, STATUS_LABELS } from "../shared/format";
+import type { IncidentStatus } from "../shared/types";
+import { Notice, Panel } from "../shared/ui";
 
 type Summary = {
   days: number;
@@ -19,46 +25,49 @@ type Summary = {
   note: string;
 };
 
-type CountTableProps = {
-  title: string;
-  counts: Record<string, number>;
-  byCount?: boolean; // largest first (default); false keeps the given order, e.g. dates
-};
+type Row = { label: string; value: number };
 
-function CountTable({ title, counts, byCount = true }: CountTableProps) {
-  const rows = Object.entries(counts);
-  if (byCount) rows.sort((a, b) => b[1] - a[1]);
+function BarList({ title, rows, sort = true }: { title: string; rows: Row[]; sort?: boolean }) {
+  const ordered = sort ? [...rows].sort((a, b) => b.value - a.value) : rows;
+  const max = Math.max(1, ...ordered.map((r) => r.value));
   return (
-    <table style={{ borderCollapse: "collapse", minWidth: 140 }}>
-      <thead>
-        <tr>
-          <th colSpan={2} style={{ textAlign: "left" }}>
-            {title}
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.length === 0 ? (
-          <tr>
-            <td colSpan={2}>none</td>
-          </tr>
-        ) : (
-          rows.map(([key, n]) => (
-            <tr key={key}>
-              <td style={{ paddingRight: 8 }}>{key}</td>
-              <td style={{ textAlign: "right" }}>{n}</td>
-            </tr>
-          ))
-        )}
-      </tbody>
-    </table>
+    <Panel title={title}>
+      {ordered.length === 0 ? (
+        <p className="muted">No incidents in this period.</p>
+      ) : (
+        <ul className="bar-list">
+          {ordered.map((row) => (
+            <li className="bar-row" key={row.label}>
+              <span className="bar-label" title={row.label}>
+                {row.label}
+              </span>
+              <span className="bar-track" aria-hidden="true">
+                <span className="bar-fill" style={{ width: `${(row.value / max) * 100}%` }} />
+              </span>
+              <span className="bar-value">{row.value}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
   );
+}
+
+const dayLabel = new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "short" });
+
+function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function rows(counts: Record<string, number>, label: (key: string) => string = (k) => k): Row[] {
+  return Object.entries(counts).map(([key, value]) => ({ label: label(key), value }));
 }
 
 export default function AnalyticsPanel({ token, refreshKey }: { token: string; refreshKey: number }) {
   const [days, setDays] = useState(7);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const id = useId();
 
   const load = useCallback(() => {
     apiGet<Summary>(`/analytics/summary?days=${days}`, token)
@@ -72,41 +81,93 @@ export default function AnalyticsPanel({ token, refreshKey }: { token: string; r
   useEffect(() => load(), [load, refreshKey]);
 
   return (
-    <section>
-      <h2>Analytics</h2>
-      <p>
-        Last{" "}
-        <select value={days} onChange={(e) => setDays(Number(e.target.value))}>
-          {[1, 7, 30, 90].map((d) => (
-            <option key={d} value={d}>
-              {d} day{d > 1 ? "s" : ""}
-            </option>
-          ))}
-        </select>{" "}
-        <button onClick={load}>Refresh</button>
-      </p>
-      {error && <p role="alert">{error}</p>}
+    <div className="stack-lg">
+      <div className="toolbar">
+        <div className="row">
+          <label className="field-label" htmlFor={`${id}-days`}>
+            Period
+          </label>
+          <select
+            id={`${id}-days`}
+            className="select select-sm"
+            value={days}
+            onChange={(e) => setDays(Number(e.target.value))}
+          >
+            {[1, 7, 30, 90].map((d) => (
+              <option key={d} value={d}>
+                {d === 1 ? "Today" : `Last ${d} days`}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button className="btn btn-secondary btn-sm" onClick={load}>
+          <RefreshCw aria-hidden="true" />
+          Refresh
+        </button>
+      </div>
+
+      {error && (
+        <Notice tone="danger" live="alert">
+          {error}
+        </Notice>
+      )}
+
       {summary && (
         <>
-          <p>
-            <strong>{summary.total}</strong> incidents ({summary.sos} SOS),{" "}
-            <strong>{summary.needs_review}</strong> need a category check,{" "}
-            <strong>{summary.open_now}</strong> open right now (any date).
-          </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }}>
-            <CountTable title="Status" counts={summary.by_status} />
-            <CountTable title="Severity" counts={summary.by_severity} />
-            <CountTable title="Category" counts={summary.by_category} />
-            <CountTable title="Language" counts={summary.by_language} />
-            <CountTable
-              title="Per day (India time)"
-              counts={Object.fromEntries(summary.per_day.map((d) => [d.date, d.count]))}
-              byCount={false}
+          <div className="stat-grid">
+            <div className="stat">
+              <div className="stat-value">{summary.total}</div>
+              <div className="stat-label">Incidents reported</div>
+            </div>
+            <div className="stat">
+              <div className="stat-value">{summary.sos}</div>
+              <div className="stat-label">SOS alerts</div>
+            </div>
+            <div className="stat">
+              <div className="stat-value">{summary.needs_review}</div>
+              <div className="stat-label">Need a category check</div>
+            </div>
+            <div className="stat">
+              <div className="stat-value">{summary.open_now}</div>
+              <div className="stat-label">Open right now (any date)</div>
+            </div>
+          </div>
+
+          <div className="breakdown-grid">
+            <BarList
+              title="By status"
+              rows={rows(summary.by_status, (k) => STATUS_LABELS[k as IncidentStatus] ?? k)}
+            />
+            <BarList
+              title="By severity"
+              rows={rows(
+                summary.by_severity,
+                (k) => SEVERITY_LABELS[k as keyof typeof SEVERITY_LABELS] ?? k,
+              )}
+            />
+            <BarList
+              title="By category"
+              rows={rows(summary.by_category, (k) =>
+                k === "uncategorised" ? "No category (incl. SOS)" : sentenceCase(k.replace(/_/g, " ")),
+              )}
+            />
+            <BarList
+              title="By language"
+              rows={rows(summary.by_language, (k) => LANGUAGE_NAMES[k] ?? k)}
             />
           </div>
-          <p style={{ fontSize: 12 }}>{summary.note}</p>
+
+          <BarList
+            title="Per day (India time)"
+            sort={false}
+            rows={summary.per_day.map((d) => ({
+              label: dayLabel.format(new Date(`${d.date}T00:00:00`)),
+              value: d.count,
+            }))}
+          />
+          <p className="small muted">{summary.note}</p>
         </>
       )}
-    </section>
+    </div>
   );
 }

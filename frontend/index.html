@@ -3,11 +3,33 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Lets the browser pick readable default colours in both light and dark mode. -->
-    <meta name="color-scheme" content="light dark" />
-    <title>TSMIRP</title>
+    <meta
+      name="description"
+      content="TSMIRP: tourist safety monitoring and incident response for Jaipur (SIH25002 prototype)."
+    />
+    <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a1120" media="(prefers-color-scheme: dark)" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231f4fa3'/%3E%3Cpath d='M8 27V15q0-8 8-10q8 2 8 10v12' fill='none' stroke='white' stroke-width='2.4'/%3E%3C/svg%3E"
+    />
+    <title>TSMIRP | Tourist safety in Jaipur</title>
+    <script>
+      // Apply the saved light/dark choice before the page is drawn (see src/shared/theme.ts).
+      (function () {
+        var preference = "system";
+        try {
+          preference = localStorage.getItem("tsmirp.theme") || "system";
+        } catch (e) {}
+        var dark =
+          preference === "dark" ||
+          (preference === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      })();
+    </script>
   </head>
   <body>
+    <noscript>TSMIRP needs JavaScript. In an emergency, call 112.</noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
