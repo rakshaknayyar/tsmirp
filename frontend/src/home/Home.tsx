@@ -1,10 +1,10 @@
-// Home page: what TSMIRP does, the way into both apps, what is simulated, and system status.
+// Home page: what TSMIRP does, what is simulated, and system status.
+// The only way in is the "Log in" button in the header (see App.tsx).
 
-import { Building2, Compass, IdCard, Languages, MapPinned, Phone, Siren } from "lucide-react";
+import { IdCard, Languages, MapPinned, Phone, Siren } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { apiGet } from "../shared/api";
-import { link } from "../shared/router";
 import { Badge } from "../shared/ui";
 import HawaMahal from "./HawaMahal";
 
@@ -93,16 +93,6 @@ export default function Home() {
             higher-risk areas, send an SOS to the control room, and report a problem in your own
             words. Your location is shared only when you switch it on.
           </p>
-          <div className="hero-actions">
-            <a className="btn btn-primary" href={link("tourist")}>
-              <Compass aria-hidden="true" />
-              Open the tourist app
-            </a>
-            <a className="btn btn-secondary" href={link("dashboard")}>
-              <Building2 aria-hidden="true" />
-              Authority dashboard
-            </a>
-          </div>
           <p className="emergency-line">
             <Phone aria-hidden="true" />
             <span>

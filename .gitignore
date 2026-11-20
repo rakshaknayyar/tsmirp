@@ -27,3 +27,10 @@ ml/data/synthetic/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local demo logins (never commit)
+*.local.txt
+
+# Office lock and temp files
+~$*
+~WRL*.tmp

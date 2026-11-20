@@ -2,7 +2,7 @@
   Design tokens and base styles.
 
   Theme: "Jaipur blue pottery" - cobalt on cool porcelain, turquoise glaze, marigold highlights.
-  Sindoor red is reserved for emergencies (SOS, critical). Dark mode is "Amer at night".
+  Sindoor red is reserved for emergencies (SOS, critical). Dark mode is a sleek blackish-grayish palette.
   The theme is chosen by data-theme="light|dark" on <html> (see src/shared/theme.ts).
 */
 
@@ -64,43 +64,43 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #0a1120;
-  --surface: #101a2d;
-  --surface-sunken: #0c1527;
-  --border: #22314d;
-  --border-strong: #34476b;
+  --bg: #0d0f12;
+  --surface: #16181d;
+  --surface-sunken: #101215;
+  --border: #262930;
+  --border-strong: #383c46;
 
-  --text: #e6ecf6;
-  --text-muted: #a4b1c8;
-  --text-subtle: #8494ae;
+  --text: #f0f2f5;
+  --text-muted: #9aa1ae;
+  --text-subtle: #6b7280;
 
-  --primary: #8aaef6;
-  --primary-hover: #aac5f9;
-  --primary-soft: #182a4c;
-  --on-primary: #0a1120;
+  --primary: #e6eaef;
+  --primary-hover: #ffffff;
+  --primary-soft: #22252c;
+  --on-primary: #0d0f12;
 
-  --accent: #4cc7c0;
-  --accent-soft: #10302f;
-  --marigold: #f1b650;
-  --marigold-soft: #33280e;
+  --accent: #3ec7b5;
+  --accent-soft: #132724;
+  --marigold: #f3b953;
+  --marigold-soft: #2b2313;
 
-  --danger: #f2858a;
-  --danger-solid: #cf3139;
-  --danger-hover: #e04149;
-  --danger-soft: #3a171a;
-  --success: #6fd3a1;
-  --success-soft: #11301f;
-  --warning: #f3c06a;
-  --warning-soft: #33260c;
+  --danger: #f87171;
+  --danger-solid: #dc2626;
+  --danger-hover: #ef4444;
+  --danger-soft: #2b1618;
+  --success: #4ade80;
+  --success-soft: #13261a;
+  --warning: #fbbf24;
+  --warning-soft: #2b2210;
 
-  --focus: #8aaef6;
-  --overlay-shadow: 0 18px 40px -18px rgb(0 0 0 / 0.7);
+  --focus: #8e95a2;
+  --overlay-shadow: 0 18px 40px -18px rgb(0 0 0 / 0.85);
 
-  --art-stone: #14223d;
-  --art-line: #7fa3ef;
-  --art-window: #0c1527;
-  --art-lit: #f1b650;
-  --art-sun: #2b3c60;
+  --art-stone: #1a1d24;
+  --art-line: #525a6b;
+  --art-window: #101215;
+  --art-lit: #f3b953;
+  --art-sun: #262933;
 }
 
 /* ---------- base ---------- */

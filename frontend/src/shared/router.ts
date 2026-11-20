@@ -1,6 +1,7 @@
 // A tiny router based on the part of the URL after "#", so the browser's back and forward
 // buttons work and every screen has its own link:
 //   #/                      home page
+//   #/login                 log-in page (#/login/staff: Authority selected, #/login/new: sign up)
 //   #/tourist/<tab>         tourist app (tabs: safety, report, assistant, id, activity, profile)
 //   #/dashboard/<tab>       authority dashboard (tabs: operations, analytics, verify)
 

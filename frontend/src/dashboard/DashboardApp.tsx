@@ -36,7 +36,7 @@ const ROLE_LABELS: Record<string, string> = {
 export default function DashboardApp({ tab }: { tab?: string }) {
   const session = useSession("staff");
   if (session === null) {
-    return <LoginForm kind="staff" onLoggedIn={(s) => setSession("staff", s)} />;
+    return <LoginForm initialKind="staff" />;
   }
   const current = TABS.some((t) => t.id === tab) ? tab! : "operations";
   return <ControlRoom session={session} tab={current} />;
@@ -89,6 +89,11 @@ function ControlRoom({ session, tab }: { session: Session; tab: string }) {
     [token, applyUpdate],
   );
 
+  function logOut() {
+    setSession("staff", null);
+    window.location.hash = link(); // back to the home page
+  }
+
   return (
     <>
       <div className="app-header">
@@ -100,7 +105,7 @@ function ControlRoom({ session, tab }: { session: Session; tab: string }) {
         </div>
         <div className="row">
           <LiveIndicator connected={connected} />
-          <button className="btn btn-secondary btn-sm" onClick={() => setSession("staff", null)}>
+          <button className="btn btn-secondary btn-sm" onClick={logOut}>
             <LogOut aria-hidden="true" />
             Log out
           </button>

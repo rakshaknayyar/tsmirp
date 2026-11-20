@@ -58,7 +58,7 @@ const SUBTITLES: Record<string, string> = {
 export default function TouristApp({ tab }: { tab?: string }) {
   const session = useSession("tourist");
   if (session === null) {
-    return <LoginForm kind="tourist" onLoggedIn={(s) => setSession("tourist", s)} />;
+    return <LoginForm initialKind="tourist" />;
   }
   const current = TABS.some((t) => t.id === tab) ? tab! : "safety";
   return <TouristHome session={session} tab={current} />;
@@ -140,6 +140,11 @@ function TouristHome({ session, tab }: { session: Session; tab: string }) {
     if (result.alerts.length > 0) loadLists();
   }
 
+  function logOut() {
+    setSession("tourist", null);
+    window.location.hash = link(); // back to the home page
+  }
+
   const consent = profile?.location_consent ?? false;
 
   let content;
@@ -205,7 +210,7 @@ function TouristHome({ session, tab }: { session: Session; tab: string }) {
             <UserRound aria-hidden="true" />
             Profile
           </a>
-          <button className="btn btn-secondary btn-sm" onClick={() => setSession("tourist", null)}>
+          <button className="btn btn-secondary btn-sm" onClick={logOut}>
             <LogOut aria-hidden="true" />
             Log out
           </button>

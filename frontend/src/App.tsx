@@ -1,24 +1,29 @@
-// App shell: the header (brand, main navigation, light/dark switch), the prototype notice, the
-// current page, and the footer. The header is on every page, so you can always get back to the
-// home page, the tourist app or the authority dashboard.
+// App shell: the header (brand, light/dark switch, log-in button), the prototype notice, the
+// current page, and the footer.
+//
+// There is no menu of pages in the header. Everyone starts on the home page and uses the one
+// "Log in" page, where a switch chooses Tourist or Authority. The TSMIRP logo always leads back
+// to the home page. While someone is logged in, the header shows a button back to their app.
 
-import { Building2, Compass, House, Monitor, Moon, Sun } from "lucide-react";
+import { Building2, Compass, LogIn, Monitor, Moon, Sun } from "lucide-react";
 import { useEffect } from "react";
 import type { MouseEvent } from "react";
 
 import DashboardApp from "./dashboard/DashboardApp";
 import Home from "./home/Home";
+import LoginForm from "./shared/LoginForm";
 import { link, useRoute } from "./shared/router";
+import { useSession } from "./shared/session";
 import SimulationNotice from "./shared/SimulationNotice";
 import { useTheme } from "./shared/theme";
 import type { ThemePreference } from "./shared/theme";
 import TouristApp from "./tourist/TouristApp";
 
-const NAV: { section: string; label: string; short?: string; icon: typeof House }[] = [
-  { section: "", label: "Home", icon: House },
-  { section: "tourist", label: "Tourist app", icon: Compass },
-  { section: "dashboard", label: "Authority dashboard", short: "Dashboard", icon: Building2 },
-];
+const PAGE_TITLES: Record<string, string> = {
+  login: "Log in",
+  tourist: "Tourist app",
+  dashboard: "Authority dashboard",
+};
 
 const THEMES: { value: ThemePreference; label: string; icon: typeof Sun }[] = [
   { value: "light", label: "Light theme", icon: Sun },
@@ -69,6 +74,40 @@ function ThemeSwitch() {
   );
 }
 
+// The button on the right of the header: "Log in" for visitors, or a way back to your own app
+// when you are already logged in (hidden while you are inside that app).
+function AccountButtons({ section }: { section: string }) {
+  const tourist = useSession("tourist");
+  const staff = useSession("staff");
+
+  if (!tourist && !staff) {
+    // The log-in page, the tourist app and the dashboard all show the log-in form already.
+    if (section !== "") return null;
+    return (
+      <a className="btn btn-primary btn-sm" href={link("login")}>
+        <LogIn aria-hidden="true" />
+        Log in
+      </a>
+    );
+  }
+  return (
+    <>
+      {tourist && section !== "tourist" && (
+        <a className="btn btn-secondary btn-sm" href={link("tourist")}>
+          <Compass aria-hidden="true" />
+          My tourist app
+        </a>
+      )}
+      {staff && section !== "dashboard" && (
+        <a className="btn btn-secondary btn-sm" href={link("dashboard")}>
+          <Building2 aria-hidden="true" />
+          Control room
+        </a>
+      )}
+    </>
+  );
+}
+
 // The router uses the "#" part of the URL, so the skip link moves focus itself.
 function skipToContent(event: MouseEvent<HTMLAnchorElement>) {
   event.preventDefault();
@@ -77,15 +116,25 @@ function skipToContent(event: MouseEvent<HTMLAnchorElement>) {
 
 export default function App() {
   const [section = "", tab] = useRoute();
+  const touristLoggedIn = useSession("tourist") !== null;
 
   useEffect(() => {
-    const page = NAV.find((item) => item.section === section)?.label ?? "Home";
-    document.title = section ? `${page} | TSMIRP` : "TSMIRP | Tourist safety in Jaipur";
+    const page = PAGE_TITLES[section];
+    document.title = page ? `${page} | TSMIRP` : "TSMIRP | Tourist safety in Jaipur";
   }, [section]);
 
   let page;
   if (section === "tourist") page = <TouristApp tab={tab} />;
   else if (section === "dashboard") page = <DashboardApp tab={tab} />;
+  else if (section === "login")
+    // #/login, #/login/staff (Authority already selected), #/login/new (create an account)
+    page = (
+      <LoginForm
+        key={tab ?? ""}
+        initialKind={tab === "staff" ? "staff" : "tourist"}
+        initialRegistering={tab === "new"}
+      />
+    );
   else page = <Home />;
 
   return (
@@ -95,36 +144,17 @@ export default function App() {
       </a>
       <header className="topbar">
         <div className="topbar-inner">
-          <a className="brand" href={link()}>
+          <a className="brand" href={link()} aria-label="TSMIRP home page">
             <BrandMark />
             <span>
               <span className="brand-name">TSMIRP</span>
               <span className="brand-tag">Tourist safety, Jaipur</span>
             </span>
           </a>
-          <nav className="main-nav" aria-label="Main">
-            {NAV.map(({ section: target, label, short, icon: Icon }) => (
-              <a
-                key={label}
-                href={target ? link(target) : link()}
-                aria-current={section === target ? "page" : undefined}
-                aria-label={short ? label : undefined}
-              >
-                <Icon aria-hidden="true" />
-                {short ? (
-                  <>
-                    <span className="nav-long">{label}</span>
-                    <span className="nav-short" aria-hidden="true">
-                      {short}
-                    </span>
-                  </>
-                ) : (
-                  label
-                )}
-              </a>
-            ))}
-          </nav>
-          <ThemeSwitch />
+          <div className="topbar-actions">
+            <AccountButtons section={section} />
+            <ThemeSwitch />
+          </div>
         </div>
       </header>
       <SimulationNotice />
@@ -132,7 +162,7 @@ export default function App() {
       <main
         id="content"
         tabIndex={-1}
-        className={section === "tourist" ? "page has-bottom-nav" : "page"}
+        className={section === "tourist" && touristLoggedIn ? "page has-bottom-nav" : "page"}
       >
         {page}
       </main>
